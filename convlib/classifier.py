@@ -39,13 +39,15 @@ class LCS:
     def _compute_eigenvalues(def_tensor):
         d_matrix = def_tensor.reshape([2,2])
         cauchy_green = d_matrix.T * d_matrix
-        eigenvalues = np.linalg.eig(cauchy_green.reshape([2,2]))[0][1]#first index take eigenvalue (or vector) second index take the first or second eigenvalue
-        eigenvalues = np.repeat(eigenvalues,4).reshape([4,1])
+        eigenvalues = np.linalg.eig(cauchy_green.reshape([2,2]))[0][0] + \
+        np.linalg.eig(cauchy_green.reshape([2,2]))[0][1] #first index take eigenvalue (or vector) second index take the first or second eigenvalue
+        eigenvalues = np.sqrt(eigenvalues)
+        eigenvalues = np.repeat(eigenvalues,4).reshape([4,1]) # repeating the same value 4 times just to fill the array, see comment in function call
         return eigenvalues
+
     @staticmethod
     def _compute_deformation_tensor(u ,v):
         timestep = pd.infer_freq(u.time.values)
-        x_res = pd.infer_freq(u.x.values)
         if 'H' in timestep:
             timestep = float(timestep.replace('H',''))*3600
         else:
@@ -54,7 +56,7 @@ class LCS:
         x_futur = u.x + u*timestep
         y_futur = u.y + v*timestep
 
-        # Solid boundary conditions
+        # Solid boundary conditions TODO: improve to more realistic case
         x_futur = x_futur.where(x_futur > u.x.min(), u.x.min()).where(x_futur < u.x.max(), u.x.max())
         y_futur = y_futur.where(y_futur > u.y.min(), u.y.min()).where(y_futur < u.y.max(), u.y.max())
 
@@ -73,8 +75,7 @@ class LCS:
         return def_tensor
 
 
-
-class Classifier():
+class Classifier:
     """
     Convergence zones classifier
     """
@@ -100,7 +101,7 @@ class Classifier():
         if self.method == 'conv':
             _classification_method = self._conv_method
         if self.method == 'lagrangian':
-            _classification_method = self._lagrangian_method(u, v)
+            _classification_method = self._lagrangian_method
 
         classified_array = _classification_method(u, v)
 
@@ -120,8 +121,10 @@ class Classifier():
         u = xr.open_dataarray(config['data_basepath']+ self.config['u_filename'])
         v = xr.open_dataarray(self.config['data_basepath']+ self.config['v_filename'])
         # dia 06-feb 15 feb
-        u = u.sel(time=slice('2000-02-07T00:00:00', '2000-07-07T18:00:00'), latitude=slice(-15,-25), longitude=slice(330,340))
-        v = v.sel(time=slice('2000-02-07T00:00:00', '2000-02-07T18:00:00'), latitude=slice(-15,-25), longitude=slice(330,340))
+        u.coords['longitude'].values = (u.coords['longitude'].values + 180) % 360 - 180
+        v.coords['longitude'].values = (v.coords['longitude'].values + 180) % 360 - 180
+        u = u.sel(time=slice('2000-02-06T00:00:00', '2000-07-08T18:00:00'), latitude=slice(-13,-27), longitude=slice(-55,-45))
+        v = v.sel(time=slice('2000-02-06T00:00:00', '2000-02-08T18:00:00'), latitude=slice(-13,-27), longitude=slice(-55,-45))
         return u, v
 
     @staticmethod
@@ -137,9 +140,15 @@ class Classifier():
         return div
 
     def _lagrangian_method(self, u, v):
+        timestep = pd.infer_freq(u.time.values)
+        if 'H' in timestep:
+            timestep = float(timestep.replace('H',''))*3600
+        else:
+            raise ValueError(f"Frequence {timestep} not supported.")
+
         lcs = LCS()
-        eigenvalues = lcs(u, v)
-        print(eigenvalues)
+        eigenvalues = lcs(u, v)/timestep
+        return eigenvalues
 
 
 class Tracker:
@@ -160,7 +169,6 @@ class Tracker:
 
     def track(self, array):
         identified_array = self._identify_features(array)
-
 
 
 class Normalizer():
@@ -203,19 +211,32 @@ class Normalizer():
 if __name__ == '__main__':
     classifier = Classifier()
     classified_array1 = classifier(config, method ='lagrangian')
-    classified_array2 = classifier(config, method = 'Q')
+    classified_array2 = classifier(config, method = 'conv')
 
 
-    ntimes=40
+    ntimes=10
+    import cartopy.feature as cfeature
     import cartopy.crs as ccrs
+
+    states_provinces = cfeature.NaturalEarthFeature(
+        category='cultural',
+        name='admin_1_states_provinces_lines',
+        scale='50m',
+        facecolor='none')
 
     for time in np.arange(ntimes):
         f, axarr = plt.subplots(1, 2, figsize=(20,10),subplot_kw={'projection': ccrs.PlateCarree()})
 
-        classified_array1.isel(time=time+1).plot(vmin = -1e-3,vmax=1e-3,cmap='RdBu', ax=axarr[0], transform = ccrs.PlateCarree())
-        classified_array2.isel(time=time+1).plot(vmin = -1e-6,vmax=1e-6,cmap='RdBu', ax=axarr[1], transform = ccrs.PlateCarree())
-        #axarr[0].coastlines()
-        #axarr[1].coastlines()
+        classified_array1.isel(time=time+1).plot(ax=axarr[0], transform=ccrs.PlateCarree())
+        #classified_array1.isel(time=time+2).plot( ax=axarr[1], transform=ccrs.PlateCarree())
+
+        #classified_array1.isel(time=time+1).plot( ax=axarr[0],cmap='nipy_spectral',vmin=0,vmax=40, transform = ccrs.PlateCarree())
+
+        classified_array2.isel(time=time+1).plot(vmin = -1e-3,vmax=1e-3,cmap='RdBu', ax=axarr[1], transform = ccrs.PlateCarree())
+        axarr[0].add_feature(states_provinces, edgecolor='gray')
+        axarr[1].add_feature(states_provinces, edgecolor='gray')
+        axarr[0].coastlines()
+        axarr[1].coastlines()
         plt.savefig(f'tempfigs/fig{time}.png')
         plt.close()
 
