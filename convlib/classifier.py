@@ -1,10 +1,10 @@
 import xarray as xr
 from meteomath import to_cartesian, divergence
 import matplotlib.pyplot as plt
-import pandas as Pd
 import numpy as np
 import pandas as pd
 from skimage.feature import blob_dog, blob_log, blob_doh
+import sys
 
 config = {
     'data_basepath': '/media/gabriel/gab_hd/data/sample_data/',
@@ -93,7 +93,7 @@ class Classifier:
         '''
         pass
 
-    def __call__(self, config, method = 'Q'):
+    def __call__(self, config: dict, method = 'Q'):
         self.method = method
         self.config = config
 
@@ -103,18 +103,15 @@ class Classifier:
 
         if self.method == 'Q':
             _classification_method = self._Q_method
-        if self.method == 'conv':
+        elif self.method == 'conv':
             _classification_method = self._conv_method
-        if self.method == 'lagrangian':
+        elif self.method == 'lagrangian':
             _classification_method = self._lagrangian_method
+        else:
+            method = self.method
+            raise ValueError(f'Method {method} not supported')
 
         classified_array = _classification_method(u, v)
-
-        '''
-        f, axarr = plt.subplots(2)
-        classified_array1.isel(time=0).plot(vmin=-1e-6, vmax=1e-6, cmap='RdBu', ax=axarr[0])
-        classified_array2.isel(time=0).plot(vmin=-1e-3, vmax=1e-3, cmap='RdBu', ax=axarr[1])
-        '''
 
         return classified_array
 
@@ -223,10 +220,11 @@ if __name__ == '__main__':
 
     classifier = Classifier()
 
-    running_on = 'jasmin'
+    running_on = str(sys.argv[1])
+
     if running_on == 'jasmin':
         config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
-        
+
     classified_array1 = classifier(config, method ='lagrangian')
     classified_array2 = classifier(config, method = 'conv')
 
