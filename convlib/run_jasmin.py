@@ -10,8 +10,8 @@ if __name__ == '__main__':
          '-o',logs_path+'%J.out',
          '-e',logs_path+'%J.err',
          '-W','12:00',
-         '-R','rusage[mem=15000]',
-         '-M','15000',
-         '-n','8',
+         '-R','rusage[mem=12000]',
+         '-M','12000',
+         '-n','4',
          '-q','par-single',
          python,script_path, 'jasmin'])
