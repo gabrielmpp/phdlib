@@ -220,7 +220,13 @@ class Normalizer():
 
 
 if __name__ == '__main__':
+
     classifier = Classifier()
+
+    running_on = 'jasmin'
+    if running_on == 'jasmin':
+        config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
+        
     classified_array1 = classifier(config, method ='lagrangian')
     classified_array2 = classifier(config, method = 'conv')
 
