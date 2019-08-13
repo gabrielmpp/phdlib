@@ -38,10 +38,9 @@ class LCS:
     @staticmethod
     def _compute_eigenvalues(def_tensor):
         d_matrix = def_tensor.reshape([2,2])
-        cauchy_green = d_matrix.T * d_matrix
-        eigenvalues = np.linalg.eig(cauchy_green.reshape([2,2]))[0][0] #+ \
-        #np.linalg.eig(cauchy_green.reshape([2,2]))[0][1] #first index take eigenvalue (or vector) second index take the first or second eigenvalue
-        #eigenvalues = np.sqrt(eigenvalues)
+        cauchy_green = np.matmul(d_matrix.T, d_matrix)
+        eigenvalues = max(np.linalg.eig(cauchy_green.reshape([2,2]))[0]) # Taking the minimum eigenvalue (lambda-1) where the minima correspond to shrinklines
+        #eigenvalues = np.log(np.sqrt(eigenvalues))
         eigenvalues = np.repeat(eigenvalues,4).reshape([4,1]) # repeating the same value 4 times just to fill the array, see comment in function call
         return eigenvalues
 
@@ -129,10 +128,10 @@ class Classifier:
         # dia 06-feb 15 feb
         u.coords['longitude'].values = (u.coords['longitude'].values + 180) % 360 - 180
         v.coords['longitude'].values = (v.coords['longitude'].values + 180) % 360 - 180
-        u = u.sel(time=slice('2000-02-06T00:00:00', '2000-07-12T18:00:00'), latitude=slice(-13, -27),
-                  longitude=slice(-55, -45))
-        v = v.sel(time=slice('2000-02-06T00:00:00', '2000-02-12T18:00:00'), latitude=slice(-13, -27),
-                  longitude=slice(-55, -45))
+        u = u.sel(time=slice('2000-02-06T00:00:00', '2000-07-16T18:00:00'), latitude=slice(5, -35),
+                  longitude=slice(-75, -35))
+        v = v.sel(time=slice('2000-02-06T00:00:00', '2000-02-16T18:00:00'), latitude=slice(5, -35),
+                  longitude=slice(-75, -35))
         u = u.resample(time='1D').mean('time')
         v = v.resample(time='1D').mean('time')
         return u, v
@@ -239,7 +238,7 @@ if __name__ == '__main__':
     for time in np.arange(ntimes):
         f, axarr = plt.subplots(1, 2, figsize=(20,10),subplot_kw={'projection': ccrs.PlateCarree()})
 
-        classified_array1.isel(time=time+1).plot(vmin=-0.01,vmax=0.01,ax=axarr[0],cmap='RdBu', transform=ccrs.PlateCarree())
+        classified_array1.isel(time=time+1).plot(ax=axarr[0],cmap='nipy_spectral', transform=ccrs.PlateCarree())
         #classified_array1.isel(time=time+2).plot( ax=axarr[1], transform=ccrs.PlateCarree())
 
         #classified_array1.isel(time=time+1).plot( ax=axarr[0],cmap='nipy_spectral',vmin=0,vmax=40, transform = ccrs.PlateCarree())
