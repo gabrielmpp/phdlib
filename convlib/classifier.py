@@ -3,7 +3,7 @@ from meteomath import to_cartesian, divergence
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from skimage.feature import blob_dog, blob_log, blob_doh
+#from skimage.feature import blob_dog, blob_log, blob_doh
 import sys
 
 config = {
@@ -162,6 +162,7 @@ class Classifier:
 class Tracker:
 
     def __init__(self):
+        from skimage.feature import blob_dog, blob_log, blob_doh
         pass
 
     def _identify_features(self, array):
@@ -255,4 +256,4 @@ if __name__ == '__main__':
         plt.savefig(f'tempfigs/fig{time}.png')
         plt.close()
 
-    Tracker().track(classified_array1)
+    #Tracker().track(classified_array1)
