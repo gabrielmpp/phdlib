@@ -39,17 +39,23 @@ class LCS:
     def _compute_eigenvalues(def_tensor):
         d_matrix = def_tensor.reshape([2,2])
         cauchy_green = d_matrix.T * d_matrix
-        eigenvalues = np.linalg.eig(cauchy_green.reshape([2,2]))[0][0] + \
-        np.linalg.eig(cauchy_green.reshape([2,2]))[0][1] #first index take eigenvalue (or vector) second index take the first or second eigenvalue
-        eigenvalues = np.sqrt(eigenvalues)
+        eigenvalues = np.linalg.eig(cauchy_green.reshape([2,2]))[0][0] #+ \
+        #np.linalg.eig(cauchy_green.reshape([2,2]))[0][1] #first index take eigenvalue (or vector) second index take the first or second eigenvalue
+        #eigenvalues = np.sqrt(eigenvalues)
         eigenvalues = np.repeat(eigenvalues,4).reshape([4,1]) # repeating the same value 4 times just to fill the array, see comment in function call
         return eigenvalues
 
     @staticmethod
     def _compute_deformation_tensor(u ,v):
-        timestep = pd.infer_freq(u.time.values)
+        timestep_u = pd.infer_freq(u.time.values)
+        timestep_v = pd.infer_freq(v.time.values)
+        assert timestep_u == timestep_v, "u and v timesteps are different!"
+        timestep = timestep_u
+
         if 'H' in timestep:
             timestep = float(timestep.replace('H',''))*3600
+        elif timestep == 'D':
+            timestep = 86400
         else:
             raise ValueError(f"Frequence {timestep} not supported.")
 
@@ -57,8 +63,8 @@ class LCS:
         y_futur = u.y + v*timestep
 
         # Solid boundary conditions TODO: improve to more realistic case
-        x_futur = x_futur.where(x_futur > u.x.min(), u.x.min()).where(x_futur < u.x.max(), u.x.max())
-        y_futur = y_futur.where(y_futur > u.y.min(), u.y.min()).where(y_futur < u.y.max(), u.y.max())
+        #x_futur = x_futur.where(x_futur > u.x.min(), u.x.min()).where(x_futur < u.x.max(), u.x.max())
+        #y_futur = y_futur.where(y_futur > u.y.min(), u.y.min()).where(y_futur < u.y.max(), u.y.max())
 
         dxdx = x_futur.differentiate('x')
         dxdy = x_futur.differentiate('y')
@@ -123,8 +129,12 @@ class Classifier:
         # dia 06-feb 15 feb
         u.coords['longitude'].values = (u.coords['longitude'].values + 180) % 360 - 180
         v.coords['longitude'].values = (v.coords['longitude'].values + 180) % 360 - 180
-        u = u.sel(time=slice('2000-02-06T00:00:00', '2000-07-08T18:00:00'), latitude=slice(-13,-27), longitude=slice(-55,-45))
-        v = v.sel(time=slice('2000-02-06T00:00:00', '2000-02-08T18:00:00'), latitude=slice(-13,-27), longitude=slice(-55,-45))
+        u = u.sel(time=slice('2000-02-06T00:00:00', '2000-07-12T18:00:00'), latitude=slice(-13, -27),
+                  longitude=slice(-55, -45))
+        v = v.sel(time=slice('2000-02-06T00:00:00', '2000-02-12T18:00:00'), latitude=slice(-13, -27),
+                  longitude=slice(-55, -45))
+        u = u.resample(time='1D').mean('time')
+        v = v.resample(time='1D').mean('time')
         return u, v
 
     @staticmethod
@@ -143,6 +153,8 @@ class Classifier:
         timestep = pd.infer_freq(u.time.values)
         if 'H' in timestep:
             timestep = float(timestep.replace('H',''))*3600
+        elif timestep == 'D':
+            timestep = 86400
         else:
             raise ValueError(f"Frequence {timestep} not supported.")
 
@@ -227,7 +239,7 @@ if __name__ == '__main__':
     for time in np.arange(ntimes):
         f, axarr = plt.subplots(1, 2, figsize=(20,10),subplot_kw={'projection': ccrs.PlateCarree()})
 
-        classified_array1.isel(time=time+1).plot(ax=axarr[0], transform=ccrs.PlateCarree())
+        classified_array1.isel(time=time+1).plot(vmin=-0.01,vmax=0.01,ax=axarr[0],cmap='RdBu', transform=ccrs.PlateCarree())
         #classified_array1.isel(time=time+2).plot( ax=axarr[1], transform=ccrs.PlateCarree())
 
         #classified_array1.isel(time=time+1).plot( ax=axarr[0],cmap='nipy_spectral',vmin=0,vmax=40, transform = ccrs.PlateCarree())
