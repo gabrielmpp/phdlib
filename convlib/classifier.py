@@ -227,9 +227,11 @@ if __name__ == '__main__':
         config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
 
     classified_array1 = classifier(config, method ='lagrangian')
-    classified_array2 = classifier(config, method = 'conv')
+    #classified_array2 = classifier(config, method = 'conv')
 
+    classified_array1.to_netcdf('/home/users/gmpp/SL.nc')
 
+    '''
     ntimes=10
     import cartopy.feature as cfeature
     import cartopy.crs as ccrs
@@ -257,3 +259,4 @@ if __name__ == '__main__':
         plt.close()
 
     #Tracker().track(classified_array1)
+    '''
