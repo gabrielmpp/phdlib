@@ -47,17 +47,17 @@ class scrapper:
                 url = urllib.request.urlopen(urlstr)
                 html_content = url.read()  # getting html content
                 soup = BeautifulSoup(html_content)
-                try:
-                    paragraph = soup.find(id=div_id)  # find div where zcas info is contained
-                    if paragraph.find_all(text=like(keyword)):
-                        outdict[full_dates[idx]] = {}
-                        outdict[full_dates[idx]]['text'] = paragraph
-                        days = re.findall(r" (?:\d(?! horas)){1,2} ", paragraph.contents.__str__())
-                        if len(days) % 2 != 0: days = days[:-1] # dropping last day cause it refers to next month
-                        outdict[full_dates[idx]]['days'] = days  # TODO CHECK IF DAY2>1 ELSE MONTH = MONTH-1
-                        outdict[full_dates[idx]]['num_of_cases'] = len(days)/2
-
-                except:
+                paragraph = soup.find(id=div_id)  # find div where zcas info is contained
+                if paragraph.find_all(text=like(keyword)):
+                    outdict[full_dates[idx]] = {}
+                    outdict[full_dates[idx]]['text'] = paragraph
+                    days = re.findall(r" (?<!Volume )\d{2}(?! horas| semanas)(?=[ ,])", paragraph.contents.__str__())
+                    if len(days) % 2 != 0: days = days[:-1] # dropping last day cause it refers to next month
+                    assert len(days) >= 2, "At least two days required"
+                    outdict[full_dates[idx]]['days'] = days  # TODO CHECK IF DAY2>1 ELSE MONTH = MONTH-1
+                    outdict[full_dates[idx]]['month_delta'] = 1 if days[0] > days[1] else 0
+                    outdict[full_dates[idx]]['num_of_cases'] = len(days)/2
+                else:
                     outdict[full_dates[idx]] = {}
                     outdict[full_dates[idx]]['text'] = None
                     outdict[full_dates[idx]]['days'] = []
@@ -67,7 +67,7 @@ class scrapper:
                 warnings.warn(f"Url {urlstr} does not exist.", Warning)
 
         data = pd.DataFrame.from_dict(outdict, orient='index')
-        data = data[['num_of_cases', 'days']]
+        data = data[['num_of_cases', 'days','month_delta']]
         array = data.to_xarray()
         return array
 
