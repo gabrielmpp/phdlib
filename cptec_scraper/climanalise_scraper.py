@@ -9,10 +9,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 import xarray as xr
 import datetime
+
 def exists(URL):
     r = requests.head(URL)
     return r.status_code == requests.codes.ok
 
+def get_last_month(month, year):
+    last_month = month - 1
+    if last_month == 0:
+        last_month = 12
+        year = year - 1
+    elif last_month < 0 or last_month > 13:
+        raise ValueError("Invalid month!")
+    return last_month, year
 
 def like(string=None, mode='all'):
     """
@@ -37,7 +46,7 @@ class scrapper:
     """
 
     @staticmethod
-    def scrape(init_date="2006/01/01", end_date="2007/12/31", keyword="ZCAS", div_id='sub12'):
+    def scrape(init_date="2005/01/01", end_date="2014/12/31", keyword="ZCAS", div_id='sub12'):
         full_dates = pd.date_range(init_date, end_date, freq="M")
         dates = [pd.to_datetime(date).strftime("%m%y") for date in full_dates]
         outdict = {}
@@ -53,10 +62,17 @@ class scrapper:
                     outdict[full_dates[idx]]['text'] = paragraph
                     days = re.findall(r" (?<!Volume )\d{2}(?! horas| semanas)(?=[ ,])", paragraph.contents.__str__())
                     if len(days) % 2 != 0: days = days[:-1] # dropping last day cause it refers to next month
-                    assert len(days) >= 2, "At least two days required"
-                    outdict[full_dates[idx]]['days'] = days  # TODO CHECK IF DAY2>1 ELSE MONTH = MONTH-1
-                    outdict[full_dates[idx]]['month_delta'] = 1 if days[0] > days[1] else 0
-                    outdict[full_dates[idx]]['num_of_cases'] = len(days)/2
+                    print(paragraph)
+                    print(days)
+                    if len(days) >= 2:
+                        outdict[full_dates[idx]]['days'] = days  # TODO CHECK IF DAY2>1 ELSE MONTH = MONTH-1
+                        outdict[full_dates[idx]]['month_delta'] = 1 if days[0] > days[1] else 0
+                        outdict[full_dates[idx]]['num_of_cases'] = len(days)/2
+                    else:
+                        outdict[full_dates[idx]] = {}
+                        outdict[full_dates[idx]]['text'] = None
+                        outdict[full_dates[idx]]['days'] = []
+                        outdict[full_dates[idx]]['num_of_cases'] = 0
                 else:
                     outdict[full_dates[idx]] = {}
                     outdict[full_dates[idx]]['text'] = None
@@ -75,18 +91,27 @@ class scrapper:
     def format_array(array):
         full_dates = []
         for idx, days in enumerate(array.days.values):
-            for day in days:
+
+            ks = [[x, x + 1] for x in range(0, len(days), 2)] #pairwise indexes
+            for jdx, k in enumerate(ks):
+                onset_day, demise_day = [days[int(i)] for i in k]
+                ## TODO setting up a datetime sequence between onset and demise
                 month = pd.to_datetime(array.index.values[idx]).month
+                #month = month - array.month_delta.values[idx] if jdx == 0 else month
                 year = pd.to_datetime(array.index.values[idx]).year
-                full_dates.append(pd.Timestamp(datetime.date(day=int(day),month=month, year=year)))
-            print(days)
+                onset = datetime.date(day=int(onset_day), month=month, year=year)
+                demise = datetime.date(day=int(demise_day), month=month, year=year)
+                if onset > demise:
+                    month, year = get_last_month(onset.month, onset.year)
+                    demise = datetime.date(day=int(onset_day), month=month, year=year)
+
+                full_dates = full_dates + pd.date_range(start=onset, end=demise).to_list()
         time = pd.date_range(full_dates[0], full_dates[-1], freq="D").to_pydatetime()
         formatted_array = xr.DataArray(np.ones(len(time)), dims=['time'], coords={'time': time})
         mask = [pd.Timestamp(time) in full_dates for time in formatted_array.time.values]
         formatted_array = formatted_array.where(mask, 0)
         return formatted_array
-        print('ok')
-        print('ok')
+
 
 
 if __name__ == '__main__':
