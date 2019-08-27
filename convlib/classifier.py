@@ -10,9 +10,11 @@ config = {
     'u_filename': 'viwve_ERA5_6hr_2000010100-2000123118.nc',
     'v_filename': 'viwvn_ERA5_6hr_2000010100-2000123118.nc',
 
-    'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-02-10T18:00:00'),
-                   'latitude': slice(5, -35),
-                   'longitude': slice(-75, -35)
+    'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-03-01T18:00:00'),
+                   'latitude': slice(5, -40),
+                   'longitude': slice(-80, -32)
+                   # 'latitude': slice(-30, -35),
+                   # 'longitude': slice(-40, -35)
                     }
     }
 
@@ -72,8 +74,8 @@ class Classifier:
         v = v.sel(self.config['array_slice'])
         u = u.resample(time='1D').mean('time')
         v = v.resample(time='1D').mean('time')
-        new_lon = np.linspace(u.longitude[0].values, u.longitude[-1].values, int(u.longitude.values.shape * 0.2))
-        new_lat = np.linspace(u.latitude[0].values, u.latitude[-1].values, int(u.longitude.values.shape * 0.2))
+        new_lon = np.linspace(u.longitude[0].values, u.longitude[-1].values, int(u.longitude.values.shape[0] * 0.2))
+        new_lat = np.linspace(u.latitude[0].values, u.latitude[-1].values, int(u.longitude.values.shape[0] * 0.2))
         print("*---- Start interp ----*")
         u = u.interp(latitude=new_lat, longitude=new_lon)
         v = v.interp(latitude=new_lat, longitude=new_lon)
@@ -123,7 +125,7 @@ if __name__ == '__main__':
     else:
         outpath = 'data/'
 
-    classified_array1 = classifier(config, method='lagrangian', lcs_type='attracting')
+    classified_array1 = classifier(config, method='lagrangian', lcs_type='repelling')
     classified_array2 = classifier(config, method='conv')
 
     classified_array1.to_netcdf(f'{outpath}SL_attracting.nc')
