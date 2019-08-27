@@ -3,7 +3,7 @@ from meteomath import to_cartesian, divergence
 import pandas as pd
 from convlib.LCS import LCS
 import sys
-
+from typing import Optional
 config = {
     'data_basepath': '/media/gabriel/gab_hd/data/sample_data/',
     'u_filename': 'viwve_ERA5_6hr_2000010100-2000123118.nc',
@@ -29,7 +29,11 @@ class Classifier:
         '''
         pass
 
-    def __call__(self, config, method='Q'):
+    def __call__(self, config: dict, method: Optional[str], lcs_type: Optional[str] = None) -> xr.DataArray:
+        """
+
+        :rtype: xr.DataArray
+        """
         print(f"*---- Calling classifier with method {method} ----*")
         self.method = method
         self.config = config
@@ -39,16 +43,16 @@ class Classifier:
         v = to_cartesian(v)
 
         if self.method == 'Q':
-            _classification_method = self._Q_method
+            classified_array = self._Q_method(u, v)
         elif self.method == 'conv':
-            _classification_method = self._conv_method
+            classified_array = self._conv_method(u, v)
         elif self.method == 'lagrangian':
-            _classification_method = self._lagrangian_method
+            assert isinstance(lcs_type, str), 'lcs_type must be string'
+            classified_array = self._lagrangian_method(u, v, lcs_type)
         else:
             method = self.method
             raise ValueError(f'Method {method} not supported')
         print("*---- Applying classification method ----*")
-        classified_array = _classification_method(u, v)
 
         return classified_array
 
@@ -83,7 +87,7 @@ class Classifier:
         return div
 
     @staticmethod
-    def _lagrangian_method(u, v):
+    def _lagrangian_method(u, v, lcs_type: str):
         timestep = pd.infer_freq(u.time.values)
         if 'H' in timestep:
             timestep = float(timestep.replace('H',''))*3600
@@ -92,7 +96,7 @@ class Classifier:
         else:
             raise ValueError(f"Frequence {timestep} not supported.")
 
-        lcs = LCS(lcs_type='attracting')
+        lcs = LCS(lcs_type=lcs_type)
         eigenvalues = lcs(u, v)/timestep
         return eigenvalues
 

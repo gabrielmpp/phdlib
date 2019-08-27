@@ -38,9 +38,9 @@ class LCS:
     def _compute_eigenvalues(self, def_tensor: np.array) -> np.array:
         d_matrix = def_tensor.reshape([2, 2])
         cauchy_green = np.matmul(d_matrix.T, d_matrix)
-        if self.lcs_type == 'attracting':
+        if self.lcs_type == 'repelling':
             eigenvalues = max(np.linalg.eig(cauchy_green.reshape([2, 2]))[0])
-        elif self.lcs_type == 'repelling':
+        elif self.lcs_type == 'attracting':
             eigenvalues = min(np.linalg.eig(cauchy_green.reshape([2, 2]))[0])
 
         eigenvalues = np.repeat(eigenvalues, 4).reshape([4, 1])  # repeating the same value 4 times just to fill the xr.DataArray in a dummy dimension
