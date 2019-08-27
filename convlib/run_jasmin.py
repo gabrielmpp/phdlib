@@ -12,7 +12,7 @@ if __name__ == '__main__':
          '-W','12:00',
          '-R','rusage[mem=20000]',
          '-M','20000',
-         '-n','20',
+         '-n','10',
          '-q','par-single',
          python,script_path, 'jasmin'])
 
