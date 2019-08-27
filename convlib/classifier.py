@@ -72,7 +72,6 @@ class Classifier:
         v = v.sel(self.config['array_slice'])
         u = u.resample(time='1D').mean('time')
         v = v.resample(time='1D').mean('time')
-        print(u.dims['longitude'])
         new_lon = np.linspace(u.longitude[0].values, u.longitude[-1].values, u.longitude.values.shape * 0.2)
         new_lat = np.linspace(u.latitude[0].values, u.latitude[-1].values, u.longitude.values.shape * 0.2)
         print("*---- Start interp ----*")
