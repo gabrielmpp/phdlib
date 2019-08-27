@@ -125,7 +125,7 @@ if __name__ == '__main__':
     else:
         outpath = 'data/'
 
-    classified_array1 = classifier(config, method='lagrangian', lcs_type='repelling')
+    classified_array1 = classifier(config, method='lagrangian', lcs_type='shrinking')
     classified_array2 = classifier(config, method='conv')
 
     classified_array1.to_netcdf(f'{outpath}SL_attracting.nc')
