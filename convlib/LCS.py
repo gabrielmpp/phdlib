@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import scipy.ndimage.filters as filters
 import scipy.ndimage as ndimage
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 available_methods = ['attracting', 'shrinking']
 
@@ -39,7 +39,7 @@ class LCS:
         cauchy_green = np.matmul(d_matrix.T, d_matrix)
         if self.lcs_type == 'attracting':
             eigenvalues = max(np.linalg.eig(cauchy_green.reshape([2, 2]))[0])
-        else self.lcs_type == 'repelling':
+        elif self.lcs_type == 'repelling':
             eigenvalues = min(np.linalg.eig(cauchy_green.reshape([2, 2]))[0])
 
         eigenvalues = np.repeat(eigenvalues, 4).reshape([4, 1])  # repeating the same value 4 times just to fill the xr.DataArray in a dummy dimension
