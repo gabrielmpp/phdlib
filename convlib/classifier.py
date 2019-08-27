@@ -97,8 +97,8 @@ if __name__ == '__main__':
 
     classifier = Classifier()
 
-    # running_on = str(sys.argv[1])
-    running_on =''
+    running_on = str(sys.argv[1])
+    #running_on =''
 
     if running_on == 'jasmin':
         config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
