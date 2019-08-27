@@ -1,7 +1,5 @@
 import xarray as xr
 from meteomath import to_cartesian, divergence
-import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 from convlib.LCS import LCS
 import sys
@@ -9,8 +7,14 @@ import sys
 config = {
     'data_basepath': '/media/gabriel/gab_hd/data/sample_data/',
     'u_filename': 'viwve_ERA5_6hr_2000010100-2000123118.nc',
-    'v_filename': 'viwvn_ERA5_6hr_2000010100-2000123118.nc'
+    'v_filename': 'viwvn_ERA5_6hr_2000010100-2000123118.nc',
+
+    'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-02-16T18:00:00'),
+                   'latitude': slice(5, -35),
+                   'longitude': slice(-75, -35)
+                    }
     }
+
 
 class Classifier:
     """
@@ -25,7 +29,7 @@ class Classifier:
         '''
         pass
 
-    def __call__(self, config: dict, method = 'Q'):
+    def __call__(self, config, method='Q'):
         self.method = method
         self.config = config
 
@@ -52,15 +56,12 @@ class Classifier:
         """
         :return: tuple of xarray.dataarray
         """
-        u = xr.open_dataarray(config['data_basepath']+ self.config['u_filename'])
-        v = xr.open_dataarray(self.config['data_basepath']+ self.config['v_filename'])
-        # dia 06-feb 15 feb
+        u = xr.open_dataarray(self.config['data_basepath'] + self.config['u_filename'])
+        v = xr.open_dataarray(self.config['data_basepath'] + self.config['v_filename'])
         u.coords['longitude'].values = (u.coords['longitude'].values + 180) % 360 - 180
         v.coords['longitude'].values = (v.coords['longitude'].values + 180) % 360 - 180
-        u = u.sel(time=slice('2000-02-06T00:00:00', '2000-07-16T18:00:00'), latitude=slice(5, -35),
-                  longitude=slice(-75, -35))
-        v = v.sel(time=slice('2000-02-06T00:00:00', '2000-02-16T18:00:00'), latitude=slice(5, -35),
-                  longitude=slice(-75, -35))
+        u = u.sel(self.config['array_slice'])
+        v = v.sel(self.config[['array_slice']])
         u = u.resample(time='1D').mean('time')
         v = v.resample(time='1D').mean('time')
         return u, v
@@ -87,7 +88,7 @@ class Classifier:
         else:
             raise ValueError(f"Frequence {timestep} not supported.")
 
-        lcs = LCS()
+        lcs = LCS(lcs_type='attracting')
         eigenvalues = lcs(u, v)/timestep
         return eigenvalues
 
@@ -107,7 +108,7 @@ if __name__ == '__main__':
     classified_array1 = classifier(config, method ='lagrangian')
     classified_array2 = classifier(config, method = 'conv')
 
-    classified_array1.to_netcdf(f'{outpath}SL.nc')
+    classified_array1.to_netcdf(f'{outpath}SL_attracting.nc')
 
     '''
     ntimes=10

@@ -6,20 +6,25 @@ import scipy.ndimage.filters as filters
 import scipy.ndimage as ndimage
 import matplotlib.pyplot as plt
 
+available_methods = ['attracting', 'shrinking']
+
 class LCS:
     """
     Methods to compute LCS in 2D wind fields in xarrray dataarrays
     """
 
-    def __init__(self):
-        pass
+
+    def __init__(self, lcs_type: str):
+        assert isinstance(lcs_type, str), "lcs_type expected to be str"
+        assert lcs_type in available_methods, f"lcs_type {lcs_type} not available"
+        self.lcs_type = lcs_type
 
     def __call__(self, u: xr.DataArray, v: xr.DataArray) -> xr.DataArray:
 
         """
         :param u: xarray datarray containing u-wind component
         :param v: xarray dataarray containing v-wind component
-        :return: xarray dataarray containg
+        :return: xarray dataarray of eigenvalue
         """
 
         def_tensor = self._compute_deformation_tensor(u, v)
@@ -29,12 +34,14 @@ class LCS:
         eigenvalues = eigenvalues.unstack('points')
         return eigenvalues
 
-    @staticmethod
-    def _compute_eigenvalues(def_tensor: np.array) -> np.array:
+    def _compute_eigenvalues(self, def_tensor: np.array) -> np.array:
         d_matrix = def_tensor.reshape([2, 2])
         cauchy_green = np.matmul(d_matrix.T, d_matrix)
-        eigenvalues = max(np.linalg.eig(cauchy_green.reshape([2, 2]))[
-                              0])
+        if self.lcs_type == 'attracting':
+            eigenvalues = max(np.linalg.eig(cauchy_green.reshape([2, 2]))[0])
+        else self.lcs_type == 'repelling':
+            eigenvalues = min(np.linalg.eig(cauchy_green.reshape([2, 2]))[0])
+
         eigenvalues = np.repeat(eigenvalues, 4).reshape([4, 1])  # repeating the same value 4 times just to fill the xr.DataArray in a dummy dimension
         return eigenvalues
 
@@ -55,14 +62,10 @@ class LCS:
         elif timestep == 'D':
             timestep = 86400
         else:
-            raise ValueError(f"Frequence {timestep} not supported.")
+            raise ValueError(f"Frequency {timestep} not supported.")
 
         x_futur = u.x + u * timestep
         y_futur = u.y + v * timestep
-
-        # Solid boundary conditions TODO: improve to more realistic case
-        # x_futur = x_futur.where(x_futur > u.x.min(), u.x.min()).where(x_futur < u.x.max(), u.x.max())
-        # y_futur = y_futur.where(y_futur > u.y.min(), u.y.min()).where(y_futur < u.y.max(), u.y.max())
 
         dxdx = x_futur.differentiate('x')
         dxdy = x_futur.differentiate('y')
