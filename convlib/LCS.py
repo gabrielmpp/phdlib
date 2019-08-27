@@ -79,7 +79,7 @@ class LCS:
         def_tensor = xr.concat([dxdx, dxdy, dydx, dydy],
                                dim=pd.Index(['dxdx', 'dxdy', 'dydx', 'dydy'], name='derivatives'))
         def_tensor = def_tensor.transpose('time', 'derivatives', 'latitude', 'longitude')
-        def_tensor = def_tensor.isel(derivatives=0).drop('derivatives')
+        #def_tensor = def_tensor.isel(derivatives=0).drop('derivatives')
         return def_tensor
 
 def find_maxima(eigenarray: xr.DataArray):

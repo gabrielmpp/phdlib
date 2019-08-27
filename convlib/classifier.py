@@ -9,7 +9,7 @@ config = {
     'u_filename': 'viwve_ERA5_6hr_2000010100-2000123118.nc',
     'v_filename': 'viwvn_ERA5_6hr_2000010100-2000123118.nc',
 
-    'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-02-16T18:00:00'),
+    'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-03-16T18:00:00'),
                    'latitude': slice(5, -35),
                    'longitude': slice(-75, -35)
                     }
@@ -97,7 +97,8 @@ if __name__ == '__main__':
 
     classifier = Classifier()
 
-    running_on = str(sys.argv[1])
+    # running_on = str(sys.argv[1])
+    running_on =''
 
     if running_on == 'jasmin':
         config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
