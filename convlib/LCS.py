@@ -6,7 +6,7 @@ import scipy.ndimage.filters as filters
 import scipy.ndimage as ndimage
 #import matplotlib.pyplot as plt
 
-available_methods = ['attracting', 'shrinking']
+available_methods = ['attracting', 'repelling']
 
 class LCS:
     """
