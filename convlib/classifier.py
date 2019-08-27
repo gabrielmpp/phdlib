@@ -30,6 +30,7 @@ class Classifier:
         pass
 
     def __call__(self, config, method='Q'):
+        print(f"*---- Calling classifier with method {method} ----*")
         self.method = method
         self.config = config
 
@@ -46,7 +47,7 @@ class Classifier:
         else:
             method = self.method
             raise ValueError(f'Method {method} not supported')
-
+        print("*---- Applying classification method ----*")
         classified_array = _classification_method(u, v)
 
         return classified_array
@@ -56,6 +57,8 @@ class Classifier:
         """
         :return: tuple of xarray.dataarray
         """
+        print("*---- Reading input data ----*")
+
         u = xr.open_dataarray(self.config['data_basepath'] + self.config['u_filename'])
         v = xr.open_dataarray(self.config['data_basepath'] + self.config['v_filename'])
         u.coords['longitude'].values = (u.coords['longitude'].values + 180) % 360 - 180
@@ -64,6 +67,7 @@ class Classifier:
         v = v.sel(self.config['array_slice'])
         u = u.resample(time='1D').mean('time')
         v = v.resample(time='1D').mean('time')
+        print("*---- Done reading ----*")
         return u, v
 
     @staticmethod
@@ -102,7 +106,7 @@ if __name__ == '__main__':
 
     if running_on == 'jasmin':
         config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
-        outpath = '/home/users/gmpp/'
+        outpath = '/home/users/gmpp/out/'
     else:
         outpath = 'data/'
 
