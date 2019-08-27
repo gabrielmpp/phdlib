@@ -9,7 +9,7 @@ config = {
     'u_filename': 'viwve_ERA5_6hr_2000010100-2000123118.nc',
     'v_filename': 'viwvn_ERA5_6hr_2000010100-2000123118.nc',
 
-    'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-03-16T18:00:00'),
+    'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-02-10T18:00:00'),
                    'latitude': slice(5, -35),
                    'longitude': slice(-75, -35)
                     }

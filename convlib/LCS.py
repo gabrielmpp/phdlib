@@ -26,10 +26,11 @@ class LCS:
         :param v: xarray dataarray containing v-wind component
         :return: xarray dataarray of eigenvalue
         """
-
+        print("*---- Computing deformation tensor ----*")
         def_tensor = self._compute_deformation_tensor(u, v)
         def_tensor = def_tensor.stack({'points': ['time', 'latitude', 'longitude']})
         def_tensor = def_tensor.dropna(dim='points')
+        print("*---- Computing eigenvalues ----*")
         eigenvalues = xr.apply_ufunc(lambda x: self._compute_eigenvalues(x), def_tensor.groupby('points'))
         eigenvalues = eigenvalues.unstack('points')
         return eigenvalues

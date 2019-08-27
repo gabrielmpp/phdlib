@@ -3,7 +3,7 @@ import subprocess
 if __name__ == '__main__':
     logs_path = '/home/users/gmpp/logs/'
     python = '/home/users/gmpp/miniconda2/envs/phd37/bin/python'
-    script_paths = ['/home/users/gmpp/phdlib/convlib/classifier.py']
+    script_paths = ['/home/users/gmpp/phdlib/convlib/classifier.py', ]
 
     for script_path in script_paths:
          subprocess.call(['bsub',
@@ -12,6 +12,10 @@ if __name__ == '__main__':
          '-W','12:00',
          '-R','rusage[mem=20000]',
          '-M','20000',
-         '-n','4',
+         '-n','20',
          '-q','par-single',
          python,script_path, 'jasmin'])
+
+
+
+
