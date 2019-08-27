@@ -117,6 +117,7 @@ if __name__ == '__main__':
     classifier = Classifier()
 
     running_on = str(sys.argv[1])
+    lcs_type = str(sys.argv[2])
     #running_on =''
 
     if running_on == 'jasmin':
@@ -125,10 +126,10 @@ if __name__ == '__main__':
     else:
         outpath = 'data/'
 
-    classified_array1 = classifier(config, method='lagrangian', lcs_type='repelling')
+    classified_array1 = classifier(config, method='lagrangian', lcs_type=lcs_type)
     classified_array2 = classifier(config, method='conv')
 
-    classified_array1.to_netcdf(f'{outpath}SL_repelling.nc')
+    classified_array1.to_netcdf(f'{outpath}SL_{lcs_type}.nc')
 
     '''
     ntimes=10
