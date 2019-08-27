@@ -33,6 +33,7 @@ class LCS:
         print("*---- Computing eigenvalues ----*")
         eigenvalues = xr.apply_ufunc(lambda x: self._compute_eigenvalues(x), def_tensor.groupby('points'))
         eigenvalues = eigenvalues.unstack('points')
+        eigenvalues = eigenvalues.isel(derivatives=0).drop('derivatives')
         return eigenvalues
 
     def _compute_eigenvalues(self, def_tensor: np.array) -> np.array:

@@ -4,6 +4,7 @@ import pandas as pd
 from convlib.LCS import LCS
 import sys
 from typing import Optional
+import numpy as np
 config = {
     'data_basepath': '/media/gabriel/gab_hd/data/sample_data/',
     'u_filename': 'viwve_ERA5_6hr_2000010100-2000123118.nc',
@@ -71,6 +72,14 @@ class Classifier:
         v = v.sel(self.config['array_slice'])
         u = u.resample(time='1D').mean('time')
         v = v.resample(time='1D').mean('time')
+        new_lon = np.linspace(u.longitude[0], u.longitude[-1], u.dims['longitude'] * 0.2)
+        new_lat = np.linspace(u.latitude[0], u.latitude[-1], u.dims['latitude'] * 0.2)
+        print("*---- Start interp ----*")
+        u = u.interp(latitude=new_lat, longitude=new_lon)
+        v = v.interp(latitude=new_lat, longitude=new_lon)
+        print('*---- Finish interp ----*"')
+
+
         print("*---- Done reading ----*")
         return u, v
 
