@@ -61,7 +61,7 @@ class Classifier:
         u.coords['longitude'].values = (u.coords['longitude'].values + 180) % 360 - 180
         v.coords['longitude'].values = (v.coords['longitude'].values + 180) % 360 - 180
         u = u.sel(self.config['array_slice'])
-        v = v.sel(self.config[['array_slice']])
+        v = v.sel(self.config['array_slice'])
         u = u.resample(time='1D').mean('time')
         v = v.resample(time='1D').mean('time')
         return u, v
