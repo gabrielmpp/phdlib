@@ -4,19 +4,21 @@ import numpy as np
 import pandas as pd
 import scipy.ndimage.filters as filters
 import scipy.ndimage as ndimage
+from meteomath import to_cartesian
+from typing import Tuple
 #import matplotlib.pyplot as plt
 
-available_methods = ['attracting', 'repelling']
+lcs_types = ['attracting', 'repelling']
+
 
 class LCS:
     """
     Methods to compute LCS in 2D wind fields in xarrray dataarrays
     """
 
-
     def __init__(self, lcs_type: str):
-        assert isinstance(lcs_type, str), "lcs_type expected to be str"
-        assert lcs_type in available_methods, f"lcs_type {lcs_type} not available"
+        assert isinstance(lcs_type, str), "Parameter lcs_type expected to be str"
+        assert lcs_type in lcs_types, f"lcs_type {lcs_type} not available"
         self.lcs_type = lcs_type
 
     def __call__(self, u: xr.DataArray, v: xr.DataArray) -> xr.DataArray:
@@ -26,8 +28,18 @@ class LCS:
         :param v: xarray dataarray containing v-wind component
         :return: xarray dataarray of eigenvalue
         """
+
+        if not (hasattr(u, "x") and hasattr(u, "y")):
+            print("Ascribing x and y coords do u")
+            u = to_cartesian(u)
+        if not (hasattr(v, "x") and hasattr(v, "y")):
+            print("Ascribing x and y coords do v")
+            v = to_cartesian(v)
+
+        u, v, eigen_grid = _Arakawa_C_grid(u, v)
         print("*---- Computing deformation tensor ----*")
-        def_tensor = self._compute_deformation_tensor(u, v)
+
+        def_tensor = self._compute_deformation_tensor(u, v, eigen_grid)
         def_tensor = def_tensor.stack({'points': ['time', 'latitude', 'longitude']})
         def_tensor = def_tensor.dropna(dim='points')
         print("*---- Computing eigenvalues ----*")
@@ -48,7 +60,7 @@ class LCS:
         return eigenvalues
 
     @staticmethod
-    def _compute_deformation_tensor(u: xr.DataArray, v: xr.DataArray) -> xr.DataArray:
+    def _compute_deformation_tensor(u: xr.DataArray, v: xr.DataArray, eigengrid: xr.DataArray) -> xr.DataArray:
         """
         :param u: xr.DataArray of the zonal wind field
         :param v: xr.DataArray of the merifional wind field
@@ -66,23 +78,88 @@ class LCS:
         else:
             raise ValueError(f"Frequency {timestep} not supported.")
 
+        # ------- Computing dy_futur/dx -------- #
+        # When derivating with respect to x we use u coords in the Arakawa C grid
+        y_futur = u.y + v.interp(latitude=u.latitude, longitude=u.longitude, kwargs={'fill_value': None}) * timestep #fill_value=None extrapolates
+        dx = u.x.diff('longitude')
+        dydx = y_futur.diff('longitude')/dx
+        dydx['longitude'] = eigengrid.longitude
+
+        # ------- Computing dx_futur/dx -------- #
         x_futur = u.x + u * timestep
-        y_futur = u.y + v * timestep
+        dx = u.x.diff('longitude')
+        dxdx = x_futur.diff('longitude')/dx
+        dxdx['longitude'] = eigengrid.longitude
 
-        dxdx = x_futur.differentiate('x')
-        dxdy = x_futur.differentiate('y')
-        dydy = y_futur.differentiate('y')
-        dydx = y_futur.differentiate('x')
+        # ------- Computing dx_futur/dy -------- #
+        # When derivating with respect to y we use v coords in the Arakawa C grid
+        x_futur = v.x + u.interp(latitude=v.latitude, longitude=v.longitude, kwargs={'fill_value': None}) * timestep #fill_value=None extrapolates
+        dy = v.y.diff('latitude')
+        dxdy = x_futur.diff('latitude')/dy
+        dxdy['latitude'] = eigengrid.latitude
 
-        dxdx = dxdx.transpose('time', 'latitude', 'longitude')
-        dxdy = dxdy.transpose('time', 'latitude', 'longitude')
-        dydy = dydy.transpose('time', 'latitude', 'longitude')
-        dydx = dydx.transpose('time', 'latitude', 'longitude')
-        def_tensor = xr.concat([dxdx, dxdy, dydx, dydy],
-                               dim=pd.Index(['dxdx', 'dxdy', 'dydx', 'dydy'], name='derivatives'))
+        # ------- Computing dy_futur/dy -------- #
+        y_futur = v.y + v * timestep
+        dy = v.y.diff('latitude')
+        dydy = y_futur.diff('latitude')/dy
+        dydy['latitude'] = eigengrid.latitude
+
+        dxdx = dxdx.transpose('time', 'latitude', 'longitude').drop('x').drop('y')
+        dxdy = dxdy.transpose('time', 'latitude', 'longitude').drop('x')
+        dydy = dydy.transpose('time', 'latitude', 'longitude').drop('x').drop('y')
+        dydx = dydx.transpose('time', 'latitude', 'longitude').drop('y')
+        dxdx.name = 'dxdx'
+        dxdy.name = 'dxdy'
+        dydy.name = 'dydy'
+        dydx.name = 'dydx'
+
+        def_tensor = xr.merge([dxdx, dxdy, dydx, dydy])
+        def_tensor = def_tensor.to_array()
+        def_tensor = def_tensor.rename({'variable': 'derivatives'})
         def_tensor = def_tensor.transpose('time', 'derivatives', 'latitude', 'longitude')
-        #def_tensor = def_tensor.isel(derivatives=0).drop('derivatives')
         return def_tensor
+
+
+def _Arakawa_C_grid(
+        u: xr.DataArray,
+        v: xr.DataArray) -> Tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
+
+    regular_u, delta_lat_u, delta_lon_u = _assert_regular_latlon_grid(u)
+    regular_v, delta_lat_v, delta_lon_v = _assert_regular_latlon_grid(v)
+    assert regular_u, 'u array lat lon grid is not regular'
+    assert regular_v, 'v array lat lon grid is not regular'
+    assert delta_lat_u == delta_lat_v, 'u and v lat are not compatible'
+    assert delta_lon_u == delta_lon_v, ' u and v lon are not compatible'
+    u_new = u.copy(data=np.zeros(u.shape))
+    v_new = v.copy(data=np.zeros(v.shape))
+    u_new['latitude'].values = u.latitude - delta_lat_u*0.5
+    v_new['longitude'].values = v.longitude - delta_lon_v*0.5
+    u_new = u_new.isel(latitude=slice(None, -1))
+    v_new = v_new.isel(longitude=slice(None, -1))
+    u_new = u.interp_like(u_new)
+    v_new = v.interp_like(v_new)
+    h_grid = xr.DataArray(0, dims=['latitude', 'longitude', 'time'], coords=[
+        u_new.latitude, v_new.longitude, u_new.time
+    ])
+    return u_new, v_new, h_grid
+
+
+def _assert_regular_latlon_grid(array: xr.DataArray) -> Tuple[bool, np.array, np.array]:
+    """
+    Method to assert if an array latitude and longitude dimensions are regular.
+    :param array: xr.DataArray to be asserted
+    :return: Tuple[bool, np.array, np.array]
+    """
+    delta_lat = (array.latitude.shift(latitude=1) - array.latitude).dropna('latitude').values
+    delta_lat = np.unique(delta_lat)
+    delta_lon = (array.longitude.shift(longitude=1) - array.longitude).dropna('longitude').values
+    delta_lon = np.unique(delta_lon)
+    if delta_lat.shape[0] == 1 and delta_lon.shape[0] == 1:
+        regular = True
+    else:
+        regular = False
+    return regular, delta_lat, delta_lon
+
 
 def find_maxima(eigenarray: xr.DataArray):
     data = eigenarray.values

@@ -11,10 +11,10 @@ config = {
     'v_filename': 'viwvn_ERA5_6hr_2000010100-2000123118.nc',
 
     'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-03-01T18:00:00'),
-                   'latitude': slice(15, -50),
-                   'longitude': slice(-100, -5)
-                   # 'latitude': slice(-30, -35),
-                   # 'longitude': slice(-40, -35)
+                   #'latitude': slice(15, -50),
+                   #'longitude': slice(-100, -5)
+                    'latitude': slice(-30, -45),
+                    'longitude': slice(-40, -25)
                     }
     }
 
@@ -116,10 +116,10 @@ if __name__ == '__main__':
 
     classifier = Classifier()
 
-    running_on = str(sys.argv[1])
-    lcs_type = str(sys.argv[2])
-    #running_on =''
-
+    #running_on = str(sys.argv[1])
+    #lcs_type = str(sys.argv[2])
+    running_on =''
+    lcs_type = 'attracting'
     if running_on == 'jasmin':
         config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
         outpath = '/home/users/gmpp/out/'
