@@ -116,10 +116,10 @@ if __name__ == '__main__':
 
     classifier = Classifier()
 
-    #running_on = str(sys.argv[1])
-    #lcs_type = str(sys.argv[2])
-    running_on =''
-    lcs_type = 'attracting'
+    running_on = str(sys.argv[1])
+    lcs_type = str(sys.argv[2])
+    #running_on =''
+    #lcs_type = 'attracting'
     if running_on == 'jasmin':
         config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
         outpath = '/home/users/gmpp/out/'
