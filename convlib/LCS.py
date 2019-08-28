@@ -151,9 +151,9 @@ def _assert_regular_latlon_grid(array: xr.DataArray) -> Tuple[bool, np.array, np
     :return: Tuple[bool, np.array, np.array]
     """
     delta_lat = (array.latitude.shift(latitude=1) - array.latitude).dropna('latitude').values
-    delta_lat = np.unique(delta_lat)
+    delta_lat = np.unique(np.round(delta_lat, 5)) # TODO rounding because numpy unique seems to have truncation error
     delta_lon = (array.longitude.shift(longitude=1) - array.longitude).dropna('longitude').values
-    delta_lon = np.unique(delta_lon)
+    delta_lon = np.unique(np.round(delta_lon, 5))
     if delta_lat.shape[0] == 1 and delta_lon.shape[0] == 1:
         regular = True
     else:
