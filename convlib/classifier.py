@@ -74,8 +74,8 @@ class Classifier:
         v = v.sel(self.config['array_slice'])
         u = u.resample(time='1D').mean('time')
         v = v.resample(time='1D').mean('time')
-        new_lon = np.linspace(u.longitude[0].values, u.longitude[-1].values, int(u.longitude.values.shape[0] * 0.2))
-        new_lat = np.linspace(u.latitude[0].values, u.latitude[-1].values, int(u.longitude.values.shape[0] * 0.2))
+        new_lon = np.linspace(u.longitude[0].values, u.longitude[-1].values, int(u.longitude.values.shape[0] * 0.1))
+        new_lat = np.linspace(u.latitude[0].values, u.latitude[-1].values, int(u.longitude.values.shape[0] * 0.1))
         print("*---- Start interp ----*")
         u = u.interp(latitude=new_lat, longitude=new_lon)
         v = v.interp(latitude=new_lat, longitude=new_lon)
@@ -116,10 +116,10 @@ if __name__ == '__main__':
 
     classifier = Classifier()
 
-    running_on = str(sys.argv[1])
-    lcs_type = str(sys.argv[2])
-    #running_on =''
-    #lcs_type = 'attracting'
+    #running_on = str(sys.argv[1])
+    #lcs_type = str(sys.argv[2])
+    running_on =''
+    lcs_type = 'attracting'
     if running_on == 'jasmin':
         config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
         outpath = '/home/users/gmpp/out/'
