@@ -7,8 +7,8 @@ from typing import Optional
 import numpy as np
 config = {
     'data_basepath': '/media/gabriel/gab_hd/data/sample_data/',
-    'u_filename': 'vimae_ERA5_6hr_2000010100-2000123118.nc',
-    'v_filename': 'viman_ERA5_6hr_2000010100-2000123118.nc',
+    'u_filename': 'viwve_ERA5_6hr_2000010100-2000123118.nc',
+    'v_filename': 'viwvn_ERA5_6hr_2000010100-2000123118.nc',
 
     'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-03-01T18:00:00'),
                    'latitude': slice(15, -50),
@@ -129,7 +129,7 @@ if __name__ == '__main__':
     classified_array1 = classifier(config, method='lagrangian', lcs_type=lcs_type)
     classified_array2 = classifier(config, method='conv')
 
-    classified_array1.to_netcdf(f'{outpath}SL_{lcs_type}_momentum.nc')
+    classified_array1.to_netcdf(f'{outpath}SL_{lcs_type}.nc')
 
     '''
     ntimes=10
