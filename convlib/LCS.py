@@ -6,7 +6,7 @@ import scipy.ndimage.filters as filters
 import scipy.ndimage as ndimage
 from meteomath import to_cartesian
 from typing import Tuple
-#import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 lcs_types = ['attracting', 'repelling']
 
