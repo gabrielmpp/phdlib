@@ -5,7 +5,7 @@ if __name__ == '__main__':
     python = '/home/users/gmpp/miniconda2/envs/phd37/bin/python'
     script_path = '/home/users/gmpp/phdlib/convlib/classifier.py'
     lcs_types = ['repelling']
-    years = [x for x in range(1980, 2000)]
+    years = [x for x in range(2000, 2010)]
     for year in years:
         for lcs_type in lcs_types:
              subprocess.call(['bsub',
