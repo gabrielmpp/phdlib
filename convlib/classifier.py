@@ -125,7 +125,7 @@ if __name__ == '__main__':
     running_on = str(sys.argv[1])
     lcs_type = str(sys.argv[2])
     year = str(sys.argv[3])
-    config['array_slice']['time'] = slice('{year}-01-01T00:00:00', '{year}-12-31T18:00:00')
+    config['array_slice']['time'] = slice(f'{year}-01-01T00:00:00', f'{year}-12-31T18:00:00')
     #running_on =''
     #lcs_type = 'attracting'
     if running_on == 'jasmin':
