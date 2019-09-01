@@ -16,19 +16,26 @@ class LCS:
     Methods to compute LCS in 2D wind fields in xarrray dataarrays
     """
 
-    def __init__(self, lcs_type: str):
+    def __init__(self, lcs_type: str, timestep: float = 1):
         assert isinstance(lcs_type, str), "Parameter lcs_type expected to be str"
         assert lcs_type in LCS_TYPES, f"lcs_type {lcs_type} not available"
         self.lcs_type = lcs_type
+        self.timestep = timestep
 
-    def __call__(self, u: xr.DataArray, v: xr.DataArray, timestep: float) -> xr.DataArray:
+    def __call__(self, ds: xr.Dataset = None,  u: xr.DataArray = None, v: xr.DataArray = None) -> xr.DataArray:
 
         """
+        :param ds: xarray dataset containing u and v as variables
         :param u: xarray datarray containing u-wind component
         :param v: xarray dataarray containing v-wind component
         :param timestep: float
         :return: xarray dataarray of eigenvalue
         """
+        timestep = self.timestep
+        if isinstance(ds, xr.Dataset):
+            u = ds.u
+            v = ds.v
+
         u_dims = u.dims
         v_dims = v.dims
 

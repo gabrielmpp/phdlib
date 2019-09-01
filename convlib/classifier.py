@@ -111,10 +111,10 @@ class Classifier:
         else:
             raise ValueError(f"Frequency {timestep} not supported.")
 
-        lcs = LCS(lcs_type=lcs_type)
-
-        print("Applying parallelized LCS detection over time dimension")
-        eigenvalues = xr.apply_ufunc(lambda x, y: lcs(x, y, timestep), u.groupby('time'), v.groupby('time'))
+        ds = xr.merge([u, v])
+        print(ds)
+        lcs = LCS(lcs_type=lcs_type, timestep=timestep)
+        eigenvalues = ds.groupby('time').apply(lcs)
         return eigenvalues
 
 
