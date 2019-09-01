@@ -32,7 +32,7 @@ class Classifier:
         '''
         pass
 
-    def __call__(self, config: dict, method: Optional[str], lcs_type: Optional[str] = None) -> xr.DataArray:
+    def __call__(self, config: dict, method: str, lcs_type: Optional[str] = None) -> xr.DataArray:
         """
 
         :rtype: xr.DataArray
@@ -99,16 +99,22 @@ class Classifier:
 
     @staticmethod
     def _lagrangian_method(u, v, lcs_type: str):
-        timestep = pd.infer_freq(u.time.values)
+
+        timestep_u = pd.infer_freq(u.time.values)
+        timestep_v = pd.infer_freq(v.time.values)
+        assert timestep_u == timestep_v, "u and v timesteps are different!"
+        timestep = timestep_u
         if 'H' in timestep:
-            timestep = float(timestep.replace('H',''))*3600
+            timestep = float(timestep.replace('H', '')) * 3600
         elif timestep == 'D':
             timestep = 86400
         else:
-            raise ValueError(f"Frequence {timestep} not supported.")
+            raise ValueError(f"Frequency {timestep} not supported.")
 
         lcs = LCS(lcs_type=lcs_type)
-        eigenvalues = lcs(u, v)/timestep
+
+        print("Applying parallelized LCS detection over time dimension")
+        eigenvalues = xr.apply_ufunc(lambda x, y: lcs(x, y, timestep), u.groupby('time'), v.groupby('time'))
         return eigenvalues
 
 
@@ -118,45 +124,17 @@ if __name__ == '__main__':
 
     running_on = str(sys.argv[1])
     lcs_type = str(sys.argv[2])
+    year = str(sys.argv[3])
+    config['array_slice']['time'] = slice('{year}-01-01T00:00:00', '{year}-12-31T18:00:00')
     #running_on =''
     #lcs_type = 'attracting'
     if running_on == 'jasmin':
         config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
-        outpath = '/home/users/gmpp/out/'
+        outpath = '/group_workspaces/jasmin4/upscale/gmpp_convzones/'
     else:
         outpath = 'data/'
 
     classified_array1 = classifier(config, method='lagrangian', lcs_type=lcs_type)
-    classified_array2 = classifier(config, method='conv')
 
-    classified_array1.to_netcdf(f'{outpath}SL_{lcs_type}.nc')
+    classified_array1.to_netcdf(f'{outpath}SL_{lcs_type}_{year}.nc')
 
-    '''
-    ntimes=10
-    import cartopy.feature as cfeature
-    import cartopy.crs as ccrs
-
-    states_provinces = cfeature.NaturalEarthFeature(
-        category='cultural',
-        name='admin_1_states_provinces_lines',
-        scale='50m',
-        facecolor='none')
-
-    for time in np.arange(ntimes):
-        f, axarr = plt.subplots(1, 2, figsize=(20,10),subplot_kw={'projection': ccrs.PlateCarree()})
-
-        classified_array1.isel(time=time+1).plot(ax=axarr[0],cmap='nipy_spectral', transform=ccrs.PlateCarree())
-        #classified_array1.isel(time=time+2).plot( ax=axarr[1], transform=ccrs.PlateCarree())
-
-        #classified_array1.isel(time=time+1).plot( ax=axarr[0],cmap='nipy_spectral',vmin=0,vmax=40, transform = ccrs.PlateCarree())
-
-        classified_array2.isel(time=time+1).plot(vmin = -1e-3,vmax=1e-3,cmap='RdBu', ax=axarr[1], transform = ccrs.PlateCarree())
-        axarr[0].add_feature(states_provinces, edgecolor='gray')
-        axarr[1].add_feature(states_provinces, edgecolor='gray')
-        axarr[0].coastlines()
-        axarr[1].coastlines()
-        plt.savefig(f'tempfigs/fig{time}.png')
-        plt.close()
-
-    #Tracker().track(classified_array1)
-    '''

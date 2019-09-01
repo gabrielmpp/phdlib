@@ -21,13 +21,19 @@ class LCS:
         assert lcs_type in LCS_TYPES, f"lcs_type {lcs_type} not available"
         self.lcs_type = lcs_type
 
-    def __call__(self, u: xr.DataArray, v: xr.DataArray) -> xr.DataArray:
+    def __call__(self, u: xr.DataArray, v: xr.DataArray, timestep: float) -> xr.DataArray:
 
         """
         :param u: xarray datarray containing u-wind component
         :param v: xarray dataarray containing v-wind component
+        :param timestep: float
         :return: xarray dataarray of eigenvalue
         """
+        u_dims = u.dims
+        v_dims = v.dims
+
+        assert set(u_dims) == set(v_dims), "u and v dims are different"
+        assert set(u_dims) == {'latitude', 'longitude'}, 'array dims should be latitude and longitude only'
 
         if not (hasattr(u, "x") and hasattr(u, "y")):
             print("Ascribing x and y coords do u")
@@ -38,8 +44,8 @@ class LCS:
 
         u, v, eigen_grid = interpolate_c_stagger(u, v)
         print("*---- Computing deformation tensor ----*")
-        def_tensor = self._compute_deformation_tensor(u, v, eigen_grid)
-        def_tensor = def_tensor.stack({'points': ['time', 'latitude', 'longitude']})
+        def_tensor = self._compute_deformation_tensor(u, v, eigen_grid, timestep)
+        def_tensor = def_tensor.stack({'points': ['latitude', 'longitude']})
         def_tensor = def_tensor.dropna(dim='points')
         print("*---- Computing eigenvalues ----*")
         eigenvalues = xr.apply_ufunc(lambda x: self._compute_eigenvalues(x), def_tensor.groupby('points'))
@@ -63,23 +69,13 @@ class LCS:
 
     @staticmethod
     def _compute_deformation_tensor(u: xr.DataArray, v: xr.DataArray,
-                                    eigengrid: xr.DataArray) -> xr.DataArray:
+                                    eigengrid: xr.DataArray, timestep: float) -> xr.DataArray:
         """
         :param u: xr.DataArray of the zonal wind field
         :param v: xr.DataArray of the meridional wind field
+        :param timestep: float
         :return: xr.DataArray of the deformation tensor
         """
-        timestep_u = pd.infer_freq(u.time.values)
-        timestep_v = pd.infer_freq(v.time.values)
-        assert timestep_u == timestep_v, "u and v timesteps are different!"
-        timestep = timestep_u
-
-        if 'H' in timestep:
-            timestep = float(timestep.replace('H', '')) * 3600
-        elif timestep == 'D':
-            timestep = 86400
-        else:
-            raise ValueError(f"Frequency {timestep} not supported.")
 
         # ------- Computing dy_futur/dx -------- #
         # When derivating with respect to x we use u coords in the Arakawa C grid
@@ -107,10 +103,10 @@ class LCS:
         dydy = y_futur.diff('latitude')/dy
         dydy['latitude'] = eigengrid.latitude
 
-        dxdx = dxdx.transpose('time', 'latitude', 'longitude').drop('x').drop('y')
-        dxdy = dxdy.transpose('time', 'latitude', 'longitude').drop('x')
-        dydy = dydy.transpose('time', 'latitude', 'longitude').drop('x').drop('y')
-        dydx = dydx.transpose('time', 'latitude', 'longitude').drop('y')
+        dxdx = dxdx.transpose('latitude', 'longitude').drop('x').drop('y')
+        dxdy = dxdy.transpose('latitude', 'longitude').drop('x')
+        dydy = dydy.transpose('latitude', 'longitude').drop('x').drop('y')
+        dydx = dydx.transpose('latitude', 'longitude').drop('y')
         dxdx.name = 'dxdx'
         dxdy.name = 'dxdy'
         dydy.name = 'dydy'
@@ -119,7 +115,7 @@ class LCS:
         def_tensor = xr.merge([dxdx, dxdy, dydx, dydy])
         def_tensor = def_tensor.to_array()
         def_tensor = def_tensor.rename({'variable': 'derivatives'})
-        def_tensor = def_tensor.transpose('time', 'derivatives', 'latitude', 'longitude')
+        def_tensor = def_tensor.transpose('derivatives', 'latitude', 'longitude')
         return def_tensor
 
 
@@ -147,8 +143,8 @@ def interpolate_c_stagger(
     v_new = v_new.isel(longitude=slice(None, -1))
     u_new = u.interp_like(u_new)
     v_new = v.interp_like(v_new)
-    h_grid = xr.DataArray(0, dims=['latitude', 'longitude', 'time'], coords=[
-        u_new.latitude, v_new.longitude, u_new.time
+    h_grid = xr.DataArray(0, dims=['latitude', 'longitude'], coords=[
+        u_new.latitude, v_new.longitude
     ])
     return u_new, v_new, h_grid
 
