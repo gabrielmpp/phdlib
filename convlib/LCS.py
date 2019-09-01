@@ -8,7 +8,7 @@ from meteomath import to_cartesian
 from typing import Tuple
 # import matplotlib.pyplot as plt
 
-lcs_types = ['attracting', 'repelling']
+LCS_TYPES = ['attracting', 'repelling']
 
 
 class LCS:
@@ -18,7 +18,7 @@ class LCS:
 
     def __init__(self, lcs_type: str):
         assert isinstance(lcs_type, str), "Parameter lcs_type expected to be str"
-        assert lcs_type in lcs_types, f"lcs_type {lcs_type} not available"
+        assert lcs_type in LCS_TYPES, f"lcs_type {lcs_type} not available"
         self.lcs_type = lcs_type
 
     def __call__(self, u: xr.DataArray, v: xr.DataArray) -> xr.DataArray:
@@ -36,9 +36,8 @@ class LCS:
             print("Ascribing x and y coords do v")
             v = to_cartesian(v)
 
-        u, v, eigen_grid = _Arakawa_C_grid(u, v)
+        u, v, eigen_grid = interpolate_c_stagger(u, v)
         print("*---- Computing deformation tensor ----*")
-
         def_tensor = self._compute_deformation_tensor(u, v, eigen_grid)
         def_tensor = def_tensor.stack({'points': ['time', 'latitude', 'longitude']})
         def_tensor = def_tensor.dropna(dim='points')
@@ -51,19 +50,23 @@ class LCS:
     def _compute_eigenvalues(self, def_tensor: np.array) -> np.array:
         d_matrix = def_tensor.reshape([2, 2])
         cauchy_green = np.matmul(d_matrix.T, d_matrix)
+
         if self.lcs_type == 'repelling':
             eigenvalues = max(np.linalg.eig(cauchy_green.reshape([2, 2]))[0])
         elif self.lcs_type == 'attracting':
             eigenvalues = min(np.linalg.eig(cauchy_green.reshape([2, 2]))[0])
+        else:
+            raise ValueError("lcs_type {lcs_type} not supported".format(lcs_type=self.lcs_type))
 
         eigenvalues = np.repeat(eigenvalues, 4).reshape([4, 1])  # repeating the same value 4 times just to fill the xr.DataArray in a dummy dimension
         return eigenvalues
 
     @staticmethod
-    def _compute_deformation_tensor(u: xr.DataArray, v: xr.DataArray, eigengrid: xr.DataArray) -> xr.DataArray:
+    def _compute_deformation_tensor(u: xr.DataArray, v: xr.DataArray,
+                                    eigengrid: xr.DataArray) -> xr.DataArray:
         """
         :param u: xr.DataArray of the zonal wind field
-        :param v: xr.DataArray of the merifional wind field
+        :param v: xr.DataArray of the meridional wind field
         :return: xr.DataArray of the deformation tensor
         """
         timestep_u = pd.infer_freq(u.time.values)
@@ -120,10 +123,16 @@ class LCS:
         return def_tensor
 
 
-def _Arakawa_C_grid(
+def interpolate_c_stagger(
         u: xr.DataArray,
         v: xr.DataArray) -> Tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
+    """
+    Function to interpolate regular xr.DataArrays onto the Arakawa C stagger.
 
+    :param u: zonal wind
+    :param v: meridional wind
+    :return: u, v interpolated in the Arakawa C stagger and h_grid in the midpoints
+    """
     regular_u, delta_lat_u, delta_lon_u = _assert_regular_latlon_grid(u)
     regular_v, delta_lat_v, delta_lon_v = _assert_regular_latlon_grid(v)
     assert regular_u, 'u array lat lon grid is not regular'
