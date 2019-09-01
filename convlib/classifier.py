@@ -114,7 +114,7 @@ class Classifier:
         v.name = 'v'
         ds = xr.merge([u, v])
         print(ds)
-        lcs = LCS(lcs_type=lcs_type, timestep=timestep, dataarray_template=u.isel(time=0).drop('time'))
+        lcs = LCS(lcs_type=lcs_type, timestep=timestep, dataarray_template=u[0, :, :])
         eigenvalues = xr.apply_ufunc(lambda x, y: lcs(u=x, v=y), u, v, dask='parallelized')
         #eigenvalues = ds.groupby('time').apply(lcs)
         return eigenvalues
