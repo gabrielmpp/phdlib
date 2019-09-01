@@ -110,7 +110,8 @@ class Classifier:
             timestep = 86400
         else:
             raise ValueError(f"Frequency {timestep} not supported.")
-
+        u.name = 'u'
+        v.name = 'v'
         ds = xr.merge([u, v])
         print(ds)
         lcs = LCS(lcs_type=lcs_type, timestep=timestep)
