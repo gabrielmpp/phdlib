@@ -76,7 +76,7 @@ def plot_local():
 if __name__ == '__main__':
     # arr = read_nc_files()
     arr = xr.open_dataarray('/home/users/gmpp/out/SL_repelling_1980_1998.nc')
-    array_mean = arr.groupby('time.month').mean()
+    array_mean = arr.groupby('time.month').mean('month')
     for month in range(1,13):
         plt.figure(figsize=[10,10])
         array_mean.sel(month=month).plot()
