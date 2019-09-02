@@ -77,3 +77,10 @@ if __name__ == '__main__':
     # arr = read_nc_files()
     arr = xr.open_dataarray('/home/users/gmpp/out/SL_repelling_1980_1998.nc')
     array_mean = arr.groupby('time.month').mean()
+    for month in range(1,13):
+        plt.figure(figsize=[10,10])
+        array_mean.sel(month=month).plot()
+        plt.savefig(
+            f'/home/users/gmpp/phdlib/convlib/tempfigs/sl_repelling_month_{month}.png'
+        )
+        plt.close()
