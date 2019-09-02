@@ -17,7 +17,8 @@ def read_nc_files():
     file_list = []
     for year in years:
         year = str(year)
-        file_list.append(f'/group_workspaces/jasmin4/upscale/gmpp_convzones/SL_repelling_{year}.nc')
+        file_list.append(xr.open_dataarray(
+            '/group_workspaces/jasmin4/upscale/gmpp_convzones/SL_repelling_{year}.nc'))
     full_array = xr.concat(file_list, dim='time')
     return full_array
 
