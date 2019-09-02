@@ -5,6 +5,8 @@ from convlib.LCS import LCS
 import sys
 from typing import Optional
 import numpy as np
+import concurrent.futures
+
 config = {
     'data_basepath': '/media/gabriel/gab_hd/data/sample_data/',
     'u_filename': 'viwve_ERA5_6hr_2000010100-2000123118.nc',
@@ -113,11 +115,21 @@ class Classifier:
         u.name = 'u'
         v.name = 'v'
         ds = xr.merge([u, v])
-        print(ds)
+        ds_groups = ds.groupby('time')
         lcs = LCS(lcs_type=lcs_type, timestep=timestep)#, dataarray_template=u.isel(time=0).drop('time'))
+
+        print(ds_groups)
+        array_list = []
+        with concurrent.futures.ProcessPoolExecutor(max_workers=8) as executor:
+            for resulting_array in executor.map(lcs, ds_groups):
+                array_list.append(resulting_array)
+        array_list.concat(array_list, dim='time')
+        eigenvalues = array_list
         #eigenvalues = xr.apply_ufunc(lambda x, y: lcs(u=x, v=y), u.groupby('time'), v.groupby('time'), dask='parallelized')
-        eigenvalues = ds.groupby('time').apply(lcs)
+        #eigenvalues = ds.groupby('time').apply(lcs)
         return eigenvalues
+
+
 
 
 if __name__ == '__main__':
