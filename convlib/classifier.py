@@ -116,12 +116,14 @@ class Classifier:
         v.name = 'v'
         ds = xr.merge([u, v])
         ds_groups = list(ds.groupby('time'))
+        input_arrays = []
+        for label, group in ds_groups: # habe to do that because bloody groupby returns the labels
+            input_arrays.append(group)
         lcs = LCS(lcs_type=lcs_type, timestep=timestep)#, dataarray_template=u.isel(time=0).drop('time'))
-
         print(ds_groups)
         array_list = []
         with concurrent.futures.ProcessPoolExecutor(max_workers=8) as executor:
-            for resulting_array in executor.map(lcs, ds_groups):
+            for resulting_array in executor.map(lcs, input_arrays):
                 array_list.append(resulting_array)
         array_list.concat(array_list, dim='time')
         eigenvalues = array_list
