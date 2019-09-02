@@ -86,6 +86,6 @@ if __name__ == '__main__':
         array_anomaly.sel(month=month).plot(cmap='RdBu', vmax=0.8*max,
                                          vmin=0.8*min)
         plt.savefig(
-            f'/home/users/gmpp/phdlib/convlib/tempfigs/sl_repelling_month_{month}.png'
+            f'/home/users/gmpp/phdlib/convlib/tempfigs/sl_repelling_month_{month}_var.png'
         )
         plt.close()
