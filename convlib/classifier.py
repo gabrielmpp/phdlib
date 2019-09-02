@@ -115,7 +115,7 @@ class Classifier:
         u.name = 'u'
         v.name = 'v'
         ds = xr.merge([u, v])
-        ds_groups = ds.groupby('time')
+        ds_groups = list(ds.groupby('time'))
         lcs = LCS(lcs_type=lcs_type, timestep=timestep)#, dataarray_template=u.isel(time=0).drop('time'))
 
         print(ds_groups)
