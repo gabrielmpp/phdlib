@@ -77,9 +77,12 @@ if __name__ == '__main__':
     # arr = read_nc_files()
     arr = xr.open_dataarray('/home/users/gmpp/out/SL_repelling_1980_1998.nc')
     array_mean = arr.groupby('time.month').mean('time')
+    max = array_mean.max()
+    min = array_mean.min()
     for month in range(1,13):
         plt.figure(figsize=[10,10])
-        array_mean.sel(month=month).plot()
+        array_mean.sel(month=month).plot(cmap='nipy_spectral', vmax=0.8*max,
+                                         vmin=min)
         plt.savefig(
             f'/home/users/gmpp/phdlib/convlib/tempfigs/sl_repelling_month_{month}.png'
         )
