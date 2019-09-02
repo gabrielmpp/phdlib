@@ -79,7 +79,7 @@ if __name__ == '__main__':
     array_mean = arr.groupby('time.month').var('time')
     #array_mean = xr.apply_ufunc(lambda x: np.log(x**0.5), array_mean)
     #array_anomaly = xr.apply_ufunc(lambda x, y: x - y, array_mean, array_mean.mean('month'))
-    array_mean = array_anomaly # TODO just to plot var
+    #array_mean = array_anomaly # TODO just to plot var
     max = array_mean.max() # TODO REPLACE FOR ARRAY_ANOMALY
     min = array_mean.min()
     for month in range(1,13):
