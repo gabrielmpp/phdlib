@@ -78,12 +78,13 @@ if __name__ == '__main__':
     arr = xr.open_dataarray('/home/users/gmpp/out/SL_repelling_1980_1998.nc')
     array_mean = arr.groupby('time.month').mean('time')
     array_mean = xr.apply_ufunc(lambda x: np.log(x**0.5), array_mean)
+    array_anomaly = xr.apply_ufunc(lambda x, y: x - y, array_mean, array_mean.mean('month') )
     max = array_mean.max()
     min = array_mean.min()
     for month in range(1,13):
         plt.figure(figsize=[10,10])
-        array_mean.sel(month=month).plot(cmap='nipy_spectral', vmax=0.8*max,
-                                         vmin=min)
+        array_mean.sel(month=month).plot(cmap='RdBu', vmax=0.8*max,
+                                         vmin=0.8*min)
         plt.savefig(
             f'/home/users/gmpp/phdlib/convlib/tempfigs/sl_repelling_month_{month}.png'
         )
