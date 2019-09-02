@@ -72,5 +72,8 @@ def plot_local():
         plt.savefig(f'./tempfigs/SL{time}.png')
         plt.close()
 
+
 if __name__ == '__main__':
-    arr = read_nc_files()
+    # arr = read_nc_files()
+    arr = xr.open_dataarray('/home/users/gmpp/out/SL_repelling_1980_1998.nc')
+    array_mean = xr.groupby('time.month').mean()
