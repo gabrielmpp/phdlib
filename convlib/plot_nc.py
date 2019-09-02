@@ -77,8 +77,9 @@ if __name__ == '__main__':
     # arr = read_nc_files()
     arr = xr.open_dataarray('/home/users/gmpp/out/SL_repelling_1980_1998.nc')
     array_mean = arr.groupby('time.month').var('time')
-    array_mean = xr.apply_ufunc(lambda x: np.log(x**0.5), array_mean)
-    array_anomaly = xr.apply_ufunc(lambda x, y: x - y, array_mean, array_mean.mean('month'))
+    #array_mean = xr.apply_ufunc(lambda x: np.log(x**0.5), array_mean)
+    #array_anomaly = xr.apply_ufunc(lambda x, y: x - y, array_mean, array_mean.mean('month'))
+    array_mean = array_anomaly # TODO just to plot var
     max = array_anomaly.max()
     min = array_anomaly.min()
     for month in range(1,13):
