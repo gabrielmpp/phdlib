@@ -125,8 +125,8 @@ class Classifier:
         with concurrent.futures.ProcessPoolExecutor(max_workers=8) as executor:
             for resulting_array in executor.map(lcs, input_arrays):
                 array_list.append(resulting_array)
-        array_list.concat(array_list, dim='time')
-        eigenvalues = array_list
+        eigenvalues = xr.concat(array_list, dim='time')
+
         #eigenvalues = xr.apply_ufunc(lambda x, y: lcs(u=x, v=y), u.groupby('time'), v.groupby('time'), dask='parallelized')
         #eigenvalues = ds.groupby('time').apply(lcs)
         return eigenvalues
@@ -141,7 +141,7 @@ if __name__ == '__main__':
     running_on = str(sys.argv[1])
     lcs_type = str(sys.argv[2])
     year = str(sys.argv[3])
-    config['array_slice']['time'] = slice(f'{year}-01-01T00:00:00', f'{year}-12-31T18:00:00')
+    config['array_slice']['time'] = slice(f'{year}-01-01T00:00:00', f'{year}-01-31T18:00:00')
     config['u_filename'] = f'viwve_ERA5_6hr_{year}010100-{year}123118.nc'
     config['v_filename'] = f'viwvn_ERA5_6hr_{year}010100-{year}123118.nc'
 
