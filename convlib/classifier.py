@@ -141,7 +141,7 @@ if __name__ == '__main__':
     running_on = str(sys.argv[1])
     lcs_type = str(sys.argv[2])
     year = str(sys.argv[3])
-    config['array_slice']['time'] = slice(f'{year}-01-01T00:00:00', f'{year}-01-31T18:00:00')
+    config['array_slice']['time'] = slice(f'{year}-01-01T00:00:00', f'{year}-12-31T18:00:00')
     config['u_filename'] = f'viwve_ERA5_6hr_{year}010100-{year}123118.nc'
     config['v_filename'] = f'viwvn_ERA5_6hr_{year}010100-{year}123118.nc'
 
