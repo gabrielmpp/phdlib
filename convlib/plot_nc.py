@@ -78,7 +78,7 @@ if __name__ == '__main__':
     arr = xr.open_dataarray('/home/users/gmpp/out/SL_repelling_1980_1998.nc')
     array_anomaly = arr.resample(time='M').mean('time')
     array_anomaly = xr.apply_ufunc(lambda x: np.log(x**0.5), array_anomaly)
-    array_anomaly = xr.apply_ufunc(lambda x, y: x - y, array_anomaly, array_anomaly.mean('time'))
+    array_anomaly = xr.apply_ufunc(lambda x, y: x - y, array_anomaly, array_anomaly.groupby('time.month').mean('time'))
     array_anomaly = array_anomaly.groupby('time.month').mean('time')
     max = array_anomaly.max()
     min = array_anomaly.min()
