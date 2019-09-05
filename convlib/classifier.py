@@ -6,12 +6,14 @@ import sys
 from typing import Optional
 import numpy as np
 import concurrent.futures
+from convlib.xr_tools import get_xr_seq
+
 
 config = {
     'data_basepath': '/media/gabriel/gab_hd/data/sample_data/',
     'u_filename': 'viwve_ERA5_6hr_2000010100-2000123118.nc',
     'v_filename': 'viwvn_ERA5_6hr_2000010100-2000123118.nc',
-
+    'time_freq': '6H',
     'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-03-01T18:00:00'),
                    'latitude': slice(15, -50),
                    'longitude': slice(-100, -5)
@@ -74,8 +76,12 @@ class Classifier:
         v.coords['longitude'].values = (v.coords['longitude'].values + 180) % 360 - 180
         u = u.sel(self.config['array_slice'])
         v = v.sel(self.config['array_slice'])
-        u = u.resample(time='1D').mean('time')
-        v = v.resample(time='1D').mean('time')
+        assert pd.infer_freq(u.time.values) == pd.infer_freq(v.time.values), "u and v should have equal time frequencies"
+        data_time_freq = pd.infer_freq(u.time.values)
+        if data_time_freq != self.config['time_freq']:
+            print("Resampling data to {}".format(self.config['time_freq']))
+            u = u.resample(time=self.config['time_freq']).mean('time')
+            v = v.resample(time=self.config['time_freq']).mean('time')
         new_lon = np.linspace(u.longitude[0].values, u.longitude[-1].values, int(u.longitude.values.shape[0] * 0.5))
         new_lat = np.linspace(u.latitude[0].values, u.latitude[-1].values, int(u.longitude.values.shape[0] * 0.5))
         print("*---- Start interp ----*")
@@ -99,17 +105,22 @@ class Classifier:
        # classified_array = div.where(div<-0.5e-3)
         return div
 
-    @staticmethod
-    def _lagrangian_method(u, v, lcs_type: str):
+    def _lagrangian_method(self, u, v, lcs_type: str, lcs_time_idxs=None):
 
-        timestep_u = pd.infer_freq(u.time.values)
-        timestep_v = pd.infer_freq(v.time.values)
-        assert timestep_u == timestep_v, "u and v timesteps are different!"
-        timestep = timestep_u
+        if lcs_time_idxs is None:
+            lcs_time_idxs = [-4, -3, -2, -1]
+
+        u = get_xr_seq(u, 'time', lcs_time_idxs)
+        v = get_xr_seq(v, 'time', lcs_time_idxs)
+        print(u)
+        print(v)
+        raise Exception('Stop')
+
+        timestep = self.config['time_freq']
         if 'H' in timestep:
             timestep = float(timestep.replace('H', '')) * 3600
-        elif timestep == 'D':
-            timestep = 86400
+        elif 'D' in timestep:
+            timestep = float(timestep.replace('D', '')) * 86400
         else:
             raise ValueError(f"Frequency {timestep} not supported.")
         u.name = 'u'
@@ -120,7 +131,6 @@ class Classifier:
         for label, group in ds_groups: # habe to do that because bloody groupby returns the labels
             input_arrays.append(group)
         lcs = LCS(lcs_type=lcs_type, timestep=timestep)#, dataarray_template=u.isel(time=0).drop('time'))
-        print(ds_groups)
         array_list = []
         with concurrent.futures.ProcessPoolExecutor(max_workers=8) as executor:
             for resulting_array in executor.map(lcs, input_arrays):

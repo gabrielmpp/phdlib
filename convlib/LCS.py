@@ -6,6 +6,7 @@ import scipy.ndimage.filters as filters
 import scipy.ndimage as ndimage
 from meteomath import to_cartesian
 from typing import Tuple
+from meteomath import interpolate_c_stagger
 # import matplotlib.pyplot as plt
 
 LCS_TYPES = ['attracting', 'repelling']
@@ -130,52 +131,6 @@ class LCS:
         def_tensor = def_tensor.transpose('derivatives', 'latitude', 'longitude')
         return def_tensor
 
-
-def interpolate_c_stagger(
-        u: xr.DataArray,
-        v: xr.DataArray) -> Tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
-    """
-    Function to interpolate regular xr.DataArrays onto the Arakawa C stagger.
-
-    :param u: zonal wind
-    :param v: meridional wind
-    :return: u, v interpolated in the Arakawa C stagger and h_grid in the midpoints
-    """
-    regular_u, delta_lat_u, delta_lon_u = _assert_regular_latlon_grid(u)
-    regular_v, delta_lat_v, delta_lon_v = _assert_regular_latlon_grid(v)
-    assert regular_u, 'u array lat lon grid is not regular'
-    assert regular_v, 'v array lat lon grid is not regular'
-    assert delta_lat_u == delta_lat_v, 'u and v lat are not compatible'
-    assert delta_lon_u == delta_lon_v, ' u and v lon are not compatible'
-    u_new = u.copy(data=np.zeros(u.shape))
-    v_new = v.copy(data=np.zeros(v.shape))
-    u_new['latitude'].values = u.latitude - delta_lat_u*0.5
-    v_new['longitude'].values = v.longitude - delta_lon_v*0.5
-    u_new = u_new.isel(latitude=slice(None, -1))
-    v_new = v_new.isel(longitude=slice(None, -1))
-    u_new = u.interp_like(u_new)
-    v_new = v.interp_like(v_new)
-    h_grid = xr.DataArray(0, dims=['latitude', 'longitude'], coords=[
-        u_new.latitude, v_new.longitude
-    ])
-    return u_new, v_new, h_grid
-
-
-def _assert_regular_latlon_grid(array: xr.DataArray) -> Tuple[bool, np.array, np.array]:
-    """
-    Method to assert if an array latitude and longitude dimensions are regular.
-    :param array: xr.DataArray to be asserted
-    :return: Tuple[bool, np.array, np.array]
-    """
-    delta_lat = (array.latitude.shift(latitude=1) - array.latitude).dropna('latitude').values
-    delta_lat = np.unique(np.round(delta_lat, 5)) # TODO rounding because numpy unique seems to have truncation error
-    delta_lon = (array.longitude.shift(longitude=1) - array.longitude).dropna('longitude').values
-    delta_lon = np.unique(np.round(delta_lon, 5))
-    if delta_lat.shape[0] == 1 and delta_lon.shape[0] == 1:
-        regular = True
-    else:
-        regular = False
-    return regular, delta_lat, delta_lon
 
 
 def find_maxima(eigenarray: xr.DataArray):
