@@ -84,9 +84,9 @@ class Classifier:
             v = v.resample(time=self.config['time_freq']).mean('time')
         new_lon = np.linspace(u.longitude[0].values, u.longitude[-1].values, int(u.longitude.values.shape[0] * 0.5))
         new_lat = np.linspace(u.latitude[0].values, u.latitude[-1].values, int(u.longitude.values.shape[0] * 0.5))
-        print("*---- Start interp ----*")
-        u = u.interp(latitude=new_lat, longitude=new_lon)
-        v = v.interp(latitude=new_lat, longitude=new_lon)
+        print("*---- NOT Start interp ----*")
+        # u = u.interp(latitude=new_lat, longitude=new_lon)
+        # v = v.interp(latitude=new_lat, longitude=new_lon)
         print('*---- Finish interp ----*"')
 
 
