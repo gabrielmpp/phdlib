@@ -108,7 +108,7 @@ class Classifier:
     def _lagrangian_method(self, u, v, lcs_type: str, lcs_time_idxs=None):
 
         if lcs_time_idxs is None:
-            lcs_time_idxs = [-4, -3, -2, -1]
+            lcs_time_idxs = [0, -1, -2, -3, -4]
 
         u = get_xr_seq(u, 'time', lcs_time_idxs)
         v = get_xr_seq(v, 'time', lcs_time_idxs)
@@ -130,7 +130,7 @@ class Classifier:
         input_arrays = []
         for label, group in ds_groups: # habe to do that because bloody groupby returns the labels
             input_arrays.append(group)
-        lcs = LCS(lcs_type=lcs_type, timestep=timestep)#, dataarray_template=u.isel(time=0).drop('time'))
+        lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='seq')#, dataarray_template=u.isel(time=0).drop('time'))
         array_list = []
         with concurrent.futures.ProcessPoolExecutor(max_workers=8) as executor:
             for resulting_array in executor.map(lcs, input_arrays):
