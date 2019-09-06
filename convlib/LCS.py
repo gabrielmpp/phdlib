@@ -36,6 +36,7 @@ class LCS:
         :return: xarray dataarray of eigenvalue
         """
         timestep = self.timestep
+        timedim = self.timedim
 
         if isinstance(ds, xr.Dataset):
             u = ds.u
