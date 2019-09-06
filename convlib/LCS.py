@@ -118,7 +118,7 @@ class LCS:
         """
 
         x_futur, y_futur = self._parcel_propagation(u, v, timestep)
-        u, v, eigengrid = interpolate_c_stagger(u, v)
+        # u, v, eigengrid = interpolate_c_stagger(u, v)
         dx = u.x.diff('longitude')
         dy = u.y.diff('latitude')
         dxdx = x_futur.diff('longitude')/dx
