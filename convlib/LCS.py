@@ -6,7 +6,7 @@ import scipy.ndimage as ndimage
 from meteomath import to_cartesian
 from typing import Tuple
 from meteomath import interpolate_c_stagger
-
+from convlib.xr_tools import xy_to_latlon
 # import matplotlib.pyplot as plt
 from xarray import DataArray
 
@@ -103,9 +103,9 @@ class LCS:
         for time in times:
 
             print(f'Propagating time {time}')
-
-            y_buffer = y_futur + timestep * v.sel({propdim: time}).interp(y=y_futur, x=x_futur, kwargs={'fill_value': None})
-            x_buffer = x_futur + timestep * u.sel({propdim: time}).interp(y=y_futur, x=x_futur, kwargs={'fill_value': None})
+            lat, lon = xy_to_latlon(x_futur.values, y_futur.values)
+            y_buffer = y_futur + timestep * v.sel({propdim: time}).interp(latitude=lat, longitude=lon, kwargs={'fill_value': None})
+            x_buffer = x_futur + timestep * u.sel({propdim: time}).interp(latitude=lat, longitude=lon, kwargs={'fill_value': None})
             x_futur = x_buffer
             y_futur = y_buffer
         return x_futur, y_futur

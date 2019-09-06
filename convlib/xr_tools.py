@@ -1,6 +1,7 @@
 import xarray as xr
 from typing import List
 from warnings import warn
+import numpy as np
 
 def get_xr_seq(ds: xr.DataArray, seq_dim: str, idx_seq: List[int]):
     """
@@ -45,3 +46,11 @@ def get_seq_mask(ds: xr.DataArray, seq_dim: str, seq_len: int):
 
     ds['seq'] = ((seq_dim), mask)
     return ds
+
+def xy_to_latlon(x, y, earth_r=6371000):
+    """
+    Inverse function of meteomath.to_cartesian
+    """
+    longitude = x*180/(np.pi*earth_r)
+    latitude = np.arcsin(180*y/np.pi)/earth_r
+    return latitude, longitude
