@@ -39,7 +39,7 @@ def get_seq_mask(ds: xr.DataArray, seq_dim: str, seq_len: int):
         ds = ds.isel({seq_dim: slice(None, len(ds[seq_dim].values) - remainder)})
 
     print(ds[seq_dim])
-    for i, time in ds[seq_dim].values.tolist():
+    for i, time in enumerate(ds[seq_dim].values.tolist()):
         idx = int(i/seq_len)
         mask.append(idx)
 
