@@ -166,4 +166,3 @@ if __name__ == '__main__':
     classified_array1 = classifier(config, method='lagrangian', lcs_type=lcs_type)
 
     classified_array1.to_netcdf(f'{outpath}SL_{lcs_type}_{year}.nc')
-
