@@ -24,7 +24,8 @@ class LCS:
         self.timestep = timestep
         self.dataarray_template = dataarray_template
 
-    def __call__(self, ds: xr.Dataset = None,  u: xr.DataArray = None, v: xr.DataArray = None) -> xr.DataArray:
+    def __call__(self, ds: xr.Dataset = None,  u: xr.DataArray = None, v: xr.DataArray = None,
+                 timedim='time') -> xr.DataArray:
 
         """
         :param ds: xarray dataset containing u and v as variables
@@ -34,6 +35,7 @@ class LCS:
         :return: xarray dataarray of eigenvalue
         """
         timestep = self.timestep
+
         if isinstance(ds, xr.Dataset):
             u = ds.u
             v = ds.v
@@ -46,7 +48,7 @@ class LCS:
         v_dims = v.dims
 
         assert set(u_dims) == set(v_dims), "u and v dims are different"
-        assert set(u_dims) == {'latitude', 'longitude'}, 'array dims should be latitude and longitude only'
+        assert set(u_dims) == {'latitude', 'longitude', timedim}, 'array dims should be latitude and longitude only'
 
         if not (hasattr(u, "x") and hasattr(u, "y")):
             print("Ascribing x and y coords do u")
@@ -55,9 +57,8 @@ class LCS:
             print("Ascribing x and y coords do v")
             v = to_cartesian(v)
 
-        u, v, eigen_grid = interpolate_c_stagger(u, v)
         print("*---- Computing deformation tensor ----*")
-        def_tensor = self._compute_deformation_tensor(u, v, eigen_grid, timestep)
+        def_tensor = self._compute_deformation_tensor(u, v, timestep)
         def_tensor = def_tensor.stack({'points': ['latitude', 'longitude']})
         def_tensor = def_tensor.dropna(dim='points')
         print("*---- Computing eigenvalues ----*")
@@ -81,14 +82,31 @@ class LCS:
         return eigenvalues
 
     @staticmethod
-    def _compute_deformation_tensor(u: xr.DataArray, v: xr.DataArray,
-                                    eigengrid: xr.DataArray, timestep: float) -> xr.DataArray:
+    def _parcel_propagation(u, v, propdim="seq"):
+        """
+
+        :param u:
+        :param v:
+        :return:
+        """
+        delta = np.unique(u[propdim].diff(propdim).values)
+        assert delta.shape[0] == 1, 'Intervals are not regular'
+
+        for i in u[propdim].values:
+            y_futur = u.y + delta * v.interp(latitude=u.latitude, longitude=u.longitude, kwargs={'fill_value': None})
+
+
+    def _compute_deformation_tensor(self, u: xr.DataArray, v: xr.DataArray,
+                                   timestep: float) -> xr.DataArray:
         """
         :param u: xr.DataArray of the zonal wind field
         :param v: xr.DataArray of the meridional wind field
         :param timestep: float
         :return: xr.DataArray of the deformation tensor
         """
+
+        x_futur, y_futur = self._parcel_propagation(u, v)
+        u, v, eigen_grid = interpolate_c_stagger(u, v)
 
         # ------- Computing dy_futur/dx -------- #
         # When derivating with respect to x we use u coords in the Arakawa C grid
