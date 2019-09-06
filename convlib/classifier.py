@@ -6,7 +6,7 @@ import sys
 from typing import Optional
 import numpy as np
 import concurrent.futures
-from convlib.xr_tools import get_xr_seq
+from convlib.xr_tools import get_seq_mask
 
 
 config = {
@@ -105,16 +105,12 @@ class Classifier:
        # classified_array = div.where(div<-0.5e-3)
         return div
 
-    def _lagrangian_method(self, u, v, lcs_type: str, lcs_time_idxs=None):
-
-        if lcs_time_idxs is None:
-            lcs_time_idxs = [0, -1, -2, -3, -4]
-
-        u = get_xr_seq(u, 'time', lcs_time_idxs)
-        v = get_xr_seq(v, 'time', lcs_time_idxs)
+    def _lagrangian_method(self, u, v, lcs_type: str, lcs_time_len=4) -> xr.DataArray:
+        time_dir = 'backward'
+        u = get_seq_mask(u, 'time', lcs_time_len)
+        v = get_seq_mask(v, 'time', lcs_time_len)
         print(u)
         print(v)
-        raise Exception('Stop')
 
         timestep = self.config['time_freq']
         if 'H' in timestep:
@@ -123,14 +119,17 @@ class Classifier:
             timestep = float(timestep.replace('D', '')) * 86400
         else:
             raise ValueError(f"Frequency {timestep} not supported.")
+
+        timestep = -timestep if time_dir == 'backward' else timestep
+
         u.name = 'u'
         v.name = 'v'
         ds = xr.merge([u, v])
-        ds_groups = list(ds.groupby('time'))
+        ds_groups = list(ds.groupby('seq'))
         input_arrays = []
-        for label, group in ds_groups: # habe to do that because bloody groupby returns the labels
+        for label, group in ds_groups: # have to do that because bloody groupby returns the labels
             input_arrays.append(group)
-        lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='seq')#, dataarray_template=u.isel(time=0).drop('time'))
+        lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='time')#, dataarray_template=u.isel(time=0).drop('time'))
         array_list = []
         with concurrent.futures.ProcessPoolExecutor(max_workers=8) as executor:
             for resulting_array in executor.map(lcs, input_arrays):
