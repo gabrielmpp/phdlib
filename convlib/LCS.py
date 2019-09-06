@@ -104,6 +104,8 @@ class LCS:
 
             print(f'Propagating time {time}')
             lat, lon = xy_to_latlon(x_futur.values, y_futur.values)
+            # TODO lat, lon have bizarre nas
+
             print(lat, lon)
             y_buffer = y_futur + timestep * v.sel({propdim: time}).interp(latitude=lat, longitude=lon, kwargs={'fill_value': None})
             x_buffer = x_futur + timestep * u.sel({propdim: time}).interp(latitude=lat, longitude=lon, kwargs={'fill_value': None})
