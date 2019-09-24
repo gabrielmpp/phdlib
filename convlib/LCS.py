@@ -8,7 +8,6 @@ from typing import Tuple
 from meteomath import interpolate_c_stagger
 from convlib.xr_tools import xy_to_latlon
 # import matplotlib.pyplot as plt
-from xarray import DataArray
 
 LCS_TYPES = ['attracting', 'repelling']
 
@@ -104,13 +103,19 @@ class LCS:
 
             print(f'Propagating time {time}')
             lat, lon = xy_to_latlon(x_futur.values, y_futur.values)
-            # TODO lat, lon have bizarre nas
+            print(lat)
 
-            print(lat, lon)
-            y_buffer = y_futur + timestep * v.sel({propdim: time}).interp(latitude=lat, longitude=lon, kwargs={'fill_value': None})
-            x_buffer = x_futur + timestep * u.sel({propdim: time}).interp(latitude=lat, longitude=lon, kwargs={'fill_value': None})
-            x_futur = x_buffer
-            y_futur = y_buffer
+            y_buffer = y_futur.interp(latitude=lat.tolist(), method='nearest') + \
+                       timestep * v.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
+                                                                longitude=lon.tolist(),
+                                                                kwargs={'fill_value': None})
+
+            x_buffer = x_futur.interp(longitude=lon.tolist(), method='nearest') + \
+                       timestep * u.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
+                                                                longitude=lon.tolist(),
+                                                                kwargs={'fill_value': None})
+            x_futur['x'] = (x_buffer['x'])
+            y_futur = y_buffer.y
         return x_futur, y_futur
 
     def _compute_deformation_tensor(self, u: xr.DataArray, v: xr.DataArray, timestep: float) -> xr.DataArray:

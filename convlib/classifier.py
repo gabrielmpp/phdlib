@@ -14,11 +14,11 @@ config = {
     'u_filename': 'viwve_ERA5_6hr_2000010100-2000123118.nc',
     'v_filename': 'viwvn_ERA5_6hr_2000010100-2000123118.nc',
     'time_freq': '6H',
-    'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-03-01T18:00:00'),
-                   'latitude': slice(15, -50),
-                   'longitude': slice(-100, -5)
-                   #'latitude': slice(-30, -45),
-                   #'longitude': slice(-40, -25)
+    'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-02-07T18:00:00'),
+                   #'latitude': slice(15, -50),
+                   #'longitude': slice(-100, -5)
+                   'latitude': slice(-30, -45),
+                   'longitude': slice(-40, -25)
                     }
     }
 
@@ -82,6 +82,12 @@ class Classifier:
             print("Resampling data to {}".format(self.config['time_freq']))
             u = u.resample(time=self.config['time_freq']).mean('time')
             v = v.resample(time=self.config['time_freq']).mean('time')
+        if 'viwv' in self.config['u_filename']:
+            print("Applying unit conversion")
+            u = u / 1000
+            v = v / 1000
+
+
         new_lon = np.linspace(u.longitude[0].values, u.longitude[-1].values, int(u.longitude.values.shape[0] * 0.5))
         new_lat = np.linspace(u.latitude[0].values, u.latitude[-1].values, int(u.longitude.values.shape[0] * 0.5))
         print("*---- NOT Start interp ----*")
@@ -131,6 +137,7 @@ class Classifier:
             input_arrays.append(group)
         lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='time')#, dataarray_template=u.isel(time=0).drop('time'))
         array_list = []
+        lcs(input_arrays[0])
         with concurrent.futures.ProcessPoolExecutor(max_workers=8) as executor:
             for resulting_array in executor.map(lcs, input_arrays):
                 array_list.append(resulting_array)
@@ -147,10 +154,13 @@ if __name__ == '__main__':
 
     classifier = Classifier()
 
-    running_on = str(sys.argv[1])
-    lcs_type = str(sys.argv[2])
-    year = str(sys.argv[3])
-    config['array_slice']['time'] = slice(f'{year}-01-01T00:00:00', f'{year}-12-31T18:00:00')
+    #running_on = str(sys.argv[1])
+    #lcs_type = str(sys.argv[2])
+    #year = str(sys.argv[3])
+    running_on = ''
+    lcs_type = 'repelling'
+    year = 2000
+    #config['array_slice']['time'] = slice(f'{year}-01-01T00:00:00', f'{year}-12-31T18:00:00')
     config['u_filename'] = f'viwve_ERA5_6hr_{year}010100-{year}123118.nc'
     config['v_filename'] = f'viwvn_ERA5_6hr_{year}010100-{year}123118.nc'
 

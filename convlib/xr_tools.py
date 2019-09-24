@@ -54,5 +54,5 @@ def xy_to_latlon(x, y, earth_r=6371000):
     Inverse function of meteomath.to_cartesian
     """
     longitude = x * 180 / (np.pi * earth_r)
-    latitude = np.arcsin(180 * y / np.pi) / earth_r
+    latitude = np.arcsin(y / earth_r) * 180/np.pi
     return latitude, longitude
