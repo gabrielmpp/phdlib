@@ -7,6 +7,7 @@ from meteomath import to_cartesian
 from typing import Tuple
 from meteomath import interpolate_c_stagger
 from convlib.xr_tools import xy_to_latlon
+
 # import matplotlib.pyplot as plt
 
 LCS_TYPES = ['attracting', 'repelling']
@@ -66,6 +67,9 @@ class LCS:
         eigenvalues = xr.apply_ufunc(lambda x: self._compute_eigenvalues(x), def_tensor.groupby('points'))
         eigenvalues = eigenvalues.unstack('points')
         eigenvalues = eigenvalues.isel(derivatives=0).drop('derivatives')
+        eigenvalues = eigenvalues.expand_dims({'time': [u.time.values[0]]})
+
+
         return eigenvalues
 
     def _compute_eigenvalues(self, def_tensor: np.array) -> np.array:
@@ -80,7 +84,8 @@ class LCS:
             raise ValueError("lcs_type {lcs_type} not supported".format(lcs_type=self.lcs_type))
 
         eigenvalues = np.repeat(eigenvalues, 4).reshape(
-            [4, 1])  # repeating the same value 4 times just to fill the xr.DataArray in a dummy dimension
+            [4])  # repeating the same value 4 times just to fill the xr.DataArray in a dummy dimension
+        eigenvalues.shape
         return eigenvalues
 
     @staticmethod
@@ -97,26 +102,43 @@ class LCS:
             times.reverse()  # inplace
 
         # initializing and integrating
-        y_futur = u.y
-        x_futur = u.x
+        y_futur = u.y.values
+        x_futur = u.x.values
+        positions_x, positions_y = np.meshgrid(x_futur, y_futur)
+
+        initial_pos = xr.DataArray()
+
         for time in times:
-
             print(f'Propagating time {time}')
-            lat, lon = xy_to_latlon(x_futur.values, y_futur.values)
-            print(lat)
+            lat, lon = xy_to_latlon(y=positions_y, x=positions_x)
+            lat = lat[:, 0]  # lat is constant along cols
+            lon = lon[0, :]  # lon is contant along rows
 
-            y_buffer = y_futur.interp(latitude=lat.tolist(), method='nearest') + \
+            # ---- propagating positions ---- #
+
+            y_buffer = positions_y + \
                        timestep * v.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
                                                                 longitude=lon.tolist(),
-                                                                kwargs={'fill_value': None})
+                                                                kwargs={'fill_value': None}).values
 
-            x_buffer = x_futur.interp(longitude=lon.tolist(), method='nearest') + \
+            x_buffer = positions_x + \
                        timestep * u.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
                                                                 longitude=lon.tolist(),
-                                                                kwargs={'fill_value': None})
-            x_futur['x'] = (x_buffer['x'])
-            y_futur = y_buffer.y
-        return x_futur, y_futur
+                                                                kwargs={'fill_value': None}).values
+            # ---- Updating positions ---- #
+
+            positions_x = x_buffer
+            positions_y = y_buffer
+        positions_x = xr.DataArray(positions_x, dims=['latitude', 'longitude'],
+                                   coords=[u.latitude.values,u.longitude.values])
+        positions_y = xr.DataArray(positions_y, dims=['latitude', 'longitude'],
+                                   coords=[u.latitude.values,u.longitude.values])
+        positions_x['x'] = (('longitude'), u.x.values)
+        positions_x['y'] = (('latitude'), u.y.values)
+        positions_y['x'] = (('longitude'), u.x.values)
+        positions_y['y'] = (('latitude'), u.y.values)
+
+        return positions_x, positions_y
 
     def _compute_deformation_tensor(self, u: xr.DataArray, v: xr.DataArray, timestep: float) -> xr.DataArray:
         """
@@ -128,15 +150,16 @@ class LCS:
 
         x_futur, y_futur = self._parcel_propagation(u, v, timestep)
         # u, v, eigengrid = interpolate_c_stagger(u, v)
-        dx = u.x.diff('longitude')
-        dy = u.y.diff('latitude')
-        dxdx = x_futur.diff('longitude')/dx
-        dxdy = x_futur.diff('latitude')/dy
-        dydy = y_futur.diff('latitude')/dy
-        dydx = y_futur.diff('longitude')/dx
+        dx = x_futur.x.diff('longitude')
+        dy = y_futur.y.diff('latitude').values
 
-        dxdx = dxdx.transpose('latitude', 'longitude').drop('x').drop('y')
-        dxdy = dxdy.transpose('latitude', 'longitude').drop('x')
+        dxdx = x_futur.diff('longitude') / x_futur.x.diff('longitude')
+        dxdy = x_futur.diff('latitude') / x_futur.y.diff('latitude')
+        dydy = y_futur.diff('latitude') / y_futur.y.diff('latitude')
+        dydx = y_futur.diff('longitude') / y_futur.x.diff('longitude')
+
+        dxdx = dxdx.transpose('latitude', 'longitude')
+        dxdy = dxdy.transpose('latitude', 'longitude').drop('x').drop('y')
         dydy = dydy.transpose('latitude', 'longitude').drop('x').drop('y')
         dydx = dydx.transpose('latitude', 'longitude').drop('y')
         dxdx.name = 'dxdx'
@@ -148,8 +171,10 @@ class LCS:
         def_tensor = def_tensor.to_array()
         def_tensor = def_tensor.rename({'variable': 'derivatives'})
         def_tensor = def_tensor.transpose('derivatives', 'latitude', 'longitude')
+        # from xrviz.dashboard import Dashboard
+        # dashboard = Dashboard(def_tensor)
+        # dashboard.show()
         print(def_tensor)
-        raise ValueError("STOP")
         return def_tensor
 
     def _compute_deformation_tensor_old(self, u: xr.DataArray, v: xr.DataArray, timestep: float) -> xr.DataArray:
@@ -204,6 +229,7 @@ class LCS:
         def_tensor = def_tensor.rename({'variable': 'derivatives'})
         def_tensor = def_tensor.transpose('derivatives', 'latitude', 'longitude')
         return def_tensor
+
 
 def find_maxima(eigenarray: xr.DataArray):
     data = eigenarray.values

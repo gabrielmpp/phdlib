@@ -17,8 +17,8 @@ config = {
     'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-02-07T18:00:00'),
                    #'latitude': slice(15, -50),
                    #'longitude': slice(-100, -5)
-                   'latitude': slice(-30, -45),
-                   'longitude': slice(-40, -25)
+                   'latitude': slice(-20, -35),
+                   'longitude': slice(-55, -35)
                     }
     }
 
@@ -84,8 +84,8 @@ class Classifier:
             v = v.resample(time=self.config['time_freq']).mean('time')
         if 'viwv' in self.config['u_filename']:
             print("Applying unit conversion")
-            u = u / 1000
-            v = v / 1000
+            u = u / 100
+            v = v / 100
 
 
         new_lon = np.linspace(u.longitude[0].values, u.longitude[-1].values, int(u.longitude.values.shape[0] * 0.5))
@@ -137,12 +137,15 @@ class Classifier:
             input_arrays.append(group)
         lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='time')#, dataarray_template=u.isel(time=0).drop('time'))
         array_list = []
-        lcs(input_arrays[0])
+
         with concurrent.futures.ProcessPoolExecutor(max_workers=8) as executor:
             for resulting_array in executor.map(lcs, input_arrays):
                 array_list.append(resulting_array)
         eigenvalues = xr.concat(array_list, dim='time')
-
+        # from xrviz.dashboard import Dashboard
+        # dashboard = Dashboard(eigenvalues)
+        #dashboard.show()
+        # u.time
         #eigenvalues = xr.apply_ufunc(lambda x, y: lcs(u=x, v=y), u.groupby('time'), v.groupby('time'), dask='parallelized')
         #eigenvalues = ds.groupby('time').apply(lcs)
         return eigenvalues
@@ -154,13 +157,13 @@ if __name__ == '__main__':
 
     classifier = Classifier()
 
-    #running_on = str(sys.argv[1])
-    #lcs_type = str(sys.argv[2])
-    #year = str(sys.argv[3])
-    running_on = ''
-    lcs_type = 'repelling'
-    year = 2000
-    #config['array_slice']['time'] = slice(f'{year}-01-01T00:00:00', f'{year}-12-31T18:00:00')
+    running_on = str(sys.argv[1])
+    lcs_type = str(sys.argv[2])
+    year = str(sys.argv[3])
+    #running_on = ''
+    #lcs_type = 'repelling'
+    #year = 2000
+    config['array_slice']['time'] = slice(f'{year}-01-01T00:00:00', f'{year}-12-31T18:00:00')
     config['u_filename'] = f'viwve_ERA5_6hr_{year}010100-{year}123118.nc'
     config['v_filename'] = f'viwvn_ERA5_6hr_{year}010100-{year}123118.nc'
 
