@@ -15,10 +15,10 @@ config = {
     'v_filename': 'viwvn_ERA5_6hr_2000010100-2000123118.nc',
     'time_freq': '6H',
     'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-02-07T18:00:00'),
-                   #'latitude': slice(15, -50),
-                   #'longitude': slice(-100, -5)
-                   'latitude': slice(-20, -35),
-                   'longitude': slice(-55, -35)
+                   'latitude': slice(15, -50),
+                   'longitude': slice(-100, -5),
+                   # 'latitude': slice(-20, -35),
+                   # 'longitude': slice(-55, -35)
                     }
     }
 
