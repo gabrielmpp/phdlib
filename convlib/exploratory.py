@@ -10,9 +10,9 @@ if __name__ == '__main__':
     array_full = xr.open_dataarray('/group_workspaces/jasmin4/upscale/gmpp_convzones/SL_repelling_2000.nc')
     time = 0
 
-    vmin = array.quantile(0.1)
-    vmax = array.quantile(0.95)
-    for time in array.time:
+    vmin = array_full.quantile(0.1)
+    vmax = array_full.quantile(0.95)
+    for time in array_full.time:
         u = u_full.sel(time=time)
         v = v_full.sel(time=time)
         array = array_full.sel(time=time)
