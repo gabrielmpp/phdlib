@@ -11,7 +11,6 @@ if __name__ == '__main__':
     time = 0
 
     vmin = array_full.quantile(0.1)
-    v_med = array.full.quantile(0.88)
 
 
     vmax = array_full.quantile(0.95)
