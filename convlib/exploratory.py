@@ -23,7 +23,7 @@ if __name__ == '__main__':
         fig, ax = plt.subplots(figsize=[20,20],subplot_kw={'projection':ccrs.PlateCarree()})
         array.plot(vmin=vmin, transform=ccrs.PlateCarree(),
                                         vmax=vmax, cmap='gray', ax=ax)
-        ax.quiver([u.longitude.values, u.latitude.values], u=u.values, v=v.values,
+        ax.quiver(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values,
                        color=mag.values)
         ax.coastlines(color='red')
         plt.savefig(f'tempfigs/{time}.png')
