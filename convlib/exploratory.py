@@ -11,6 +11,9 @@ if __name__ == '__main__':
     time = 0
 
     vmin = array_full.quantile(0.1)
+    v_med = array.full.quantile(0.88)
+
+
     vmax = array_full.quantile(0.95)
     for time in array_full.time:
         u = u_full.sel(time=time)
@@ -21,7 +24,7 @@ if __name__ == '__main__':
         fig, ax = plt.subplots(figsize=[20,20],subplot_kw={'projection':ccrs.PlateCarree()})
         array.plot(vmin=vmin, transform=ccrs.PlateCarree(),
                                         vmax=vmax, cmap='gray', ax=ax)
-        ax.streamplot([u.longitude.values, u.latitude.values], u.values, v.values,
+        ax.quiver([u.longitude.values, u.latitude.values], u.values, v.values,
                        color=mag.values)
         ax.coastlines(color='red')
         plt.savefig(f'tempfigs/{time}.png')
