@@ -22,6 +22,6 @@ if __name__ == '__main__':
         array.plot(vmin=vmin, transform=ccrs.PlateCarree(),
                                         vmax=vmax, cmap='gray', ax=ax)
         ax.streamplot(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values,
-                       colors=mag.values, density=0.2)
+                       color=mag.values, density=0.2)
         ax.coastlines(color='red')
         plt.savefig(f'tempfigs/{time}.png')
