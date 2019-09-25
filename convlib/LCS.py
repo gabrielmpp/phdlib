@@ -7,10 +7,26 @@ from meteomath import to_cartesian
 from typing import Tuple
 from meteomath import interpolate_c_stagger
 from convlib.xr_tools import xy_to_latlon
+from sklearn.preprocessing import MinMaxScaler
+
 
 # import matplotlib.pyplot as plt
 
 LCS_TYPES = ['attracting', 'repelling']
+
+
+def double_gyre(x, y, t, freq=0.1):
+
+    omega = freq*2*np.pi
+    epsilon = 0.25
+    A = 10
+    a = epsilon*np.sin(omega * t)
+    b = 1 - 2*epsilon*np.sin(omega*t)
+    f = a*x**2 + b*x
+    u = -np.pi * A * np.sin(np.pi*f) * np.cos(np.pi*y)
+    dfdx = 2*a*x + b
+    v = np.pi * A * np.cos(np.pi*f)*np.sin(np.pi*y) * dfdx
+    return u, v
 
 
 class LCS:
@@ -24,6 +40,7 @@ class LCS:
         self.lcs_type = lcs_type
         self.timestep = timestep
         self.timedim = timedim
+
         self.dataarray_template = dataarray_template
 
     def __call__(self, ds: xr.Dataset = None, u: xr.DataArray = None, v: xr.DataArray = None) -> xr.DataArray:
@@ -67,7 +84,7 @@ class LCS:
         eigenvalues = xr.apply_ufunc(lambda x: self._compute_eigenvalues(x), def_tensor.groupby('points'))
         eigenvalues = eigenvalues.unstack('points')
         eigenvalues = eigenvalues.isel(derivatives=0).drop('derivatives')
-        eigenvalues = eigenvalues.expand_dims({'time': [u.time.values[0]]})
+        eigenvalues = eigenvalues.expand_dims({self.timedim: [u[self.timedim].values[0]]})
 
 
         return eigenvalues
@@ -148,7 +165,7 @@ class LCS:
         :return: xr.DataArray of the deformation tensor
         """
 
-        x_futur, y_futur = self._parcel_propagation(u, v, timestep)
+        x_futur, y_futur = self._parcel_propagation(u, v, timestep, propdim=self.timedim)
         # u, v, eigengrid = interpolate_c_stagger(u, v)
         dx = x_futur.x.diff('longitude')
         dy = y_futur.y.diff('latitude').values
@@ -250,42 +267,57 @@ def find_maxima(eigenarray: xr.DataArray):
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
-    import cartopy.feature as cfeature
-    import cartopy.crs as ccrs
 
-    # u_path = '/path/to/ncdf/files/u.nc'
-    # v_path = '/path/to/ncdf/files/v.nc'
-    # u = xr.open_dataarray(u_path)
-    # v = xr.open_dataarray(v_path)
-    # lcs = LCS()
-    # eigenvalues: xr.DataArray  # type hint
-    # eigenvalues = lcs(u, v)
-    eigenarray = xr.open_dataarray('data/SL.nc')
+    nt = 15
+    nx = 80
+    ny = 40
+    latlon_array = xr.DataArray(np.zeros([ny, nx, nt]), dims=['latitude', 'longitude', 't'],
+                         coords={'longitude': np.linspace(-80, -30, nx),
+                                 'latitude':np.linspace(-60, 10, ny), 't': np.linspace(0, 1, nt)})
+    cartesian_array = to_cartesian(latlon_array)
+    scalerx = MinMaxScaler(feature_range=(0,2))
+    scalery = MinMaxScaler(feature_range=(0,1))
 
-    states_provinces = cfeature.NaturalEarthFeature(
-        category='cultural',
-        name='admin_1_states_provinces_lines',
-        scale='50m',
-        facecolor='none')
+    scaled_x = scalerx.fit_transform(cartesian_array.x.values.reshape(-1,1))
+    scaled_y = scalery.fit_transform(cartesian_array.y.values.reshape(-1,1))
 
-    for time in eigenarray.time.values:
-        f, ax = plt.subplots(1, 1, figsize=(14, 14), subplot_kw={'projection': ccrs.PlateCarree()})
-        eigenarray.sel(time=time).plot.contourf(cmap='nipy_spectral', vmax=0.7, ax=ax, levels=50)
-        ax.coastlines(color='white')
-        plt.savefig(f'tempfigs/eigenvalues_{time}.png')
-        plt.close()
+    grid = np.meshgrid(scaled_x, scaled_y)
+    u = []
+    v = []
+    for t in cartesian_array.t.values:
+        u_temp, v_temp = double_gyre(grid[1], grid[0], t)
+        u.append(u_temp)
+        v.append(v_temp)
 
-    for time in eigenarray.time.values:
-        f, axarr = plt.subplots(1, 3, figsize=(3 * 14, 14), subplot_kw={'projection': ccrs.PlateCarree()})
-        max_array, diff_array, labeled_array = find_maxima(eigenarray.sel(time=time))
+    u = np.stack(u, axis=2)
+    v = np.stack(v, axis=2)
 
-        max_array.plot(ax=axarr[0], vmax=1, cmap='nipy_spectral')
-        diff_array.plot(ax=axarr[1])
-        labeled_array.where(labeled_array != 0).plot(ax=axarr[2], cmap='tab20')
-        axarr[0].coastlines(color='white')
-        axarr[1].coastlines()
-        axarr[2].coastlines()
+    u = cartesian_array.copy(data=u)
+    v = cartesian_array.copy(data=v)
+    mag = (u**2 + v**2)**0.5
+    mag.name = 'magnitude'
 
-        plt.savefig(f'tempfigs/labeled_{time}.png')
-        plt.close()
-    print(None)
+    for time in range(nt):
+
+
+
+        plt.streamplot(y=u.latitude.values,x=u.longitude.values, u=u.isel(t=time).values,
+                       v=v.isel(t=time).values, color=mag.isel(t=time).values)
+
+        plt.show()
+
+    lcs=LCS('repelling', 3600, dataarray_template=None, timedim='t')
+    eigenvalues = lcs(u=u, v=v)
+    eigenvalues.isel(t=0).plot()
+    for time in range(nt):
+
+        eigenvalues.isel(t=0).plot()
+        plt.streamplot(x=u.longitude.values, y=u.latitude.values, u=u.isel(t=time).values,
+                       v=v.isel(t=time).values, color=mag.isel(t=time).values)
+        plt.show()
+    from xrviz.dashboard import Dashboard
+    dashboard = Dashboard(u)
+    dashboard.show()
+    plt.streamplot(x=u.longitude.values, y=u.latitude.values, u=u.isel(t=time).values,
+                   v=v.isel(t=time).values, color=mag.isel(t=time).values)
+    plt.show()
