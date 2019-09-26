@@ -8,6 +8,9 @@ if __name__ == '__main__':
     v_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/viwvn_ERA5_6hr_2000010100-2000123118.nc')
 
     array_full = xr.open_dataarray('/group_workspaces/jasmin4/upscale/gmpp_convzones/SL_repelling_2000.nc')
+    u_full = u_full.sel(latitude=array_full.latitude, longitude=array_full.longitude)
+    v_full = v_full.sel(latitude=array_full.latitude, longitude=array_full.longitude)
+
     time = 0
 
     vmin = array_full.quantile(0.1)
@@ -24,7 +27,7 @@ if __name__ == '__main__':
         fig, ax = plt.subplots(figsize=[20,20],subplot_kw={'projection':ccrs.PlateCarree()})
         array.plot(vmin=vmin, transform=ccrs.PlateCarree(),
                                         vmax=vmax, cmap='gray', ax=ax)
-        ax.quiver(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values)
+        ax.streamplot(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values, density=0.5)
                       # color=mag.values)
         ax.coastlines(color='red')
         plt.savefig(f'tempfigs/{i}.png')
