@@ -6,7 +6,8 @@ import cartopy.crs as ccrs
 if __name__ == '__main__':
     u_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/viwve_ERA5_6hr_2000010100-2000123118.nc')
     v_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/viwvn_ERA5_6hr_2000010100-2000123118.nc')
-
+    u_full.coords['longitude'].values = (u_full.coords['longitude'].values + 180) % 360 - 180
+    v_full.coords['longitude'].values = (v_full.coords['longitude'].values + 180) % 360 - 180
     array_full = xr.open_dataarray('/group_workspaces/jasmin4/upscale/gmpp_convzones/SL_repelling_2000.nc')
     print(array_full)
     print(u_full)
