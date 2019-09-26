@@ -14,6 +14,7 @@ if __name__ == '__main__':
 
 
     vmax = array_full.quantile(0.95)
+    i=0
     for time in array_full.time:
         u = u_full.sel(time=time)
         v = v_full.sel(time=time)
@@ -26,4 +27,6 @@ if __name__ == '__main__':
         ax.quiver(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values)
                       # color=mag.values)
         ax.coastlines(color='red')
-        plt.savefig(f'tempfigs/{time}.png')
+        plt.savefig(f'tempfigs/{i}.png')
+        plt.close()
+        i+=1
