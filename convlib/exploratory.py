@@ -21,16 +21,16 @@ if __name__ == '__main__':
 
     vmax = array_full.quantile(0.95)
     i=0
-    for time in array_full.time:
+    for time in u_full.time.values:
         u = u_full.sel(time=time)
         v = v_full.sel(time=time)
-        array = array_full.sel(time=time)
+        array = array_full.sel(time=time, method='pad')
         mag = (u ** 2 + v ** 2) ** 0.5
         print(f'Plotting time {time}')
-        fig, ax = plt.subplots(figsize=[20,20],subplot_kw={'projection':ccrs.PlateCarree()})
+        fig, ax = plt.subplots(figsize=[30,20],subplot_kw={'projection':ccrs.PlateCarree()})
         array.plot(vmin=vmin, transform=ccrs.PlateCarree(),
                                         vmax=vmax, cmap='gray', ax=ax)
-        ax.streamplot(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values, density=0.5)
+        ax.streamplot(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values, density=1)
                       # color=mag.values)
         ax.coastlines(color='red')
         plt.savefig(f'tempfigs/{i}.png')

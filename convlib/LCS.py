@@ -15,10 +15,9 @@ from sklearn.preprocessing import MinMaxScaler
 LCS_TYPES = ['attracting', 'repelling']
 
 
-def double_gyre(x, y, t, freq=0.1):
+def double_gyre(x, y, t, freq=0.1, epsilon=0.25):
 
     omega = freq*2*np.pi
-    epsilon = 0.25
     A = 10
     a = epsilon*np.sin(omega * t)
     b = 1 - 2*epsilon*np.sin(omega*t)
@@ -271,9 +270,13 @@ if __name__ == '__main__':
     nt = 15
     nx = 80
     ny = 40
+    dx = 1
+    epsilon = 0
     latlon_array = xr.DataArray(np.zeros([ny, nx, nt]), dims=['latitude', 'longitude', 't'],
-                         coords={'longitude': np.linspace(-80, -30, nx),
-                                 'latitude':np.linspace(-60, 10, ny), 't': np.linspace(0, 1, nt)})
+                         coords={'longitude': np.linspace(-80, -80+nx*dx, nx),
+                                 'latitude':np.linspace(-60, -60+nx*dx, ny), 't': np.linspace(0, 1, nt)})
+    latlon_array.isel(t=0).plot()
+    plt.show()
     cartesian_array = to_cartesian(latlon_array)
     scalerx = MinMaxScaler(feature_range=(0,2))
     scalery = MinMaxScaler(feature_range=(0,1))
@@ -285,7 +288,7 @@ if __name__ == '__main__':
     u = []
     v = []
     for t in cartesian_array.t.values:
-        u_temp, v_temp = double_gyre(grid[1], grid[0], t)
+        v_temp, u_temp = double_gyre(grid[1], grid[0], t, epsilon)
         u.append(u_temp)
         v.append(v_temp)
 
