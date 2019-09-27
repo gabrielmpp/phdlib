@@ -1,6 +1,5 @@
 import xarray as xr
 import numpy as np
-import pandas as pd
 import scipy.ndimage.filters as filters
 import scipy.ndimage as ndimage
 from meteomath import to_cartesian
@@ -16,9 +15,19 @@ LCS_TYPES = ['attracting', 'repelling']
 
 
 def double_gyre(x, y, t, freq=0.1, epsilon=0.25):
+    """
+    Function to compute the double gyre analytically
+
+    :param x: np.array with x positions
+    :param y: np.array with y positions
+    :param t: np.array with time values
+    :param freq: temporal frequency
+    :param epsilon: intensity of time dependence
+    :return: tuple of numpy arrays with zonal and meridional components
+    """
 
     omega = freq*2*np.pi
-    A = 10
+    A = 0.1
     a = epsilon*np.sin(omega * t)
     b = 1 - 2*epsilon*np.sin(omega*t)
     f = a*x**2 + b*x
@@ -33,12 +42,13 @@ class LCS:
     Methods to compute LCS in 2D wind fields in xarrray dataarrays
     """
 
-    def __init__(self, lcs_type: str, timestep: float = 1, dataarray_template=None, timedim='time'):
+    def __init__(self, lcs_type: str, timestep: float = 1, dataarray_template=None, timedim='time', shearless=False):
         assert isinstance(lcs_type, str), "Parameter lcs_type expected to be str"
         assert lcs_type in LCS_TYPES, f"lcs_type {lcs_type} not available"
         self.lcs_type = lcs_type
         self.timestep = timestep
         self.timedim = timedim
+        self.shearless = shearless
 
         self.dataarray_template = dataarray_template
 
@@ -107,10 +117,11 @@ class LCS:
     @staticmethod
     def _parcel_propagation(u, v, timestep, propdim="time"):
         """
+        Method to propagate the parcel given u and v
 
-        :param u:
-        :param v:
-        :return:
+        :param u: xr.DataArray zonal wind
+        :param v: xr.DataArray meridional wind
+        :return: tuple of xr.DataArrays containing the final positions of the trajectories
         """
 
         times = u[propdim].values.tolist()
@@ -145,6 +156,7 @@ class LCS:
 
             positions_x = x_buffer
             positions_y = y_buffer
+
         positions_x = xr.DataArray(positions_x, dims=['latitude', 'longitude'],
                                    coords=[u.latitude.values,u.longitude.values])
         positions_y = xr.DataArray(positions_y, dims=['latitude', 'longitude'],
@@ -178,6 +190,9 @@ class LCS:
         dxdy = dxdy.transpose('latitude', 'longitude').drop('x').drop('y')
         dydy = dydy.transpose('latitude', 'longitude').drop('x').drop('y')
         dydx = dydx.transpose('latitude', 'longitude').drop('y')
+        if self.shearless:
+            dydx = dydx*0
+            dxdy = dxdy*0
         dxdx.name = 'dxdx'
         dxdy.name = 'dxdy'
         dydy.name = 'dydy'
@@ -232,9 +247,9 @@ class LCS:
         dydy['latitude'] = eigengrid.latitude
 
         dxdx = dxdx.transpose('latitude', 'longitude').drop('x').drop('y')
-        dxdy = dxdy.transpose('latitude', 'longitude').drop('x')
+        dxdy = dxdy.transpose('latitude', 'longitude').drop('x') * 0
         dydy = dydy.transpose('latitude', 'longitude').drop('x').drop('y')
-        dydx = dydx.transpose('latitude', 'longitude').drop('y')
+        dydx = dydx.transpose('latitude', 'longitude').drop('y') * 0
         dxdx.name = 'dxdx'
         dxdy.name = 'dxdy'
         dydy.name = 'dydy'
@@ -268,13 +283,16 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
 
     nt = 15
-    nx = 80
-    ny = 40
+    nx = 120
+    ny = 60
     dx = 1
     epsilon = 0
+    mode = 'repelling'
+    backwards = True
+    shearless = True
     latlon_array = xr.DataArray(np.zeros([ny, nx, nt]), dims=['latitude', 'longitude', 't'],
                          coords={'longitude': np.linspace(-80, -80+nx*dx, nx),
-                                 'latitude':np.linspace(-60, -60+nx*dx, ny), 't': np.linspace(0, 1, nt)})
+                                 'latitude': np.linspace(-60, -60+nx*dx, ny), 't': np.linspace(0, 1, nt)})
     latlon_array.isel(t=0).plot()
     plt.show()
     cartesian_array = to_cartesian(latlon_array)
@@ -300,18 +318,26 @@ if __name__ == '__main__':
     mag = (u**2 + v**2)**0.5
     mag.name = 'magnitude'
 
-    for time in range(nt):
+    #for time in range(nt):
 
 
 
-        plt.streamplot(y=u.latitude.values,x=u.longitude.values, u=u.isel(t=time).values,
-                       v=v.isel(t=time).values, color=mag.isel(t=time).values)
+    #    plt.streamplot(y=u.latitude.values,x=u.longitude.values, u=u.isel(t=time).values,
+    #                       v=v.isel(t=time).values, color=mag.isel(t=time).values)
 
-        plt.show()
+    #   plt.show()
 
-    lcs=LCS('repelling', 3600, dataarray_template=None, timedim='t')
+    if backwards:
+        lcs = LCS(mode, -1, dataarray_template=None, timedim='t', shearless=shearless)
+    else:
+        lcs = LCS(mode, 1, dataarray_template=None, timedim='t', shearless=shearless)
+
     eigenvalues = lcs(u=u, v=v)
-    eigenvalues.isel(t=0).plot()
+
+    #eigenvalues.isel(t=0).plot()
+    #plt.show()
+
+
     for time in range(nt):
 
         eigenvalues.isel(t=0).plot()
