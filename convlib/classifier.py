@@ -115,6 +115,7 @@ class Classifier:
         time_dir = 'backward'
         u = get_seq_mask(u, 'time', lcs_time_len)
         v = get_seq_mask(v, 'time', lcs_time_len)
+        shearless = True
 
 
         timestep = self.config['time_freq']
@@ -134,7 +135,7 @@ class Classifier:
         input_arrays = []
         for label, group in ds_groups: # have to do that because bloody groupby returns the labels
             input_arrays.append(group)
-        lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='time')#, dataarray_template=u.isel(time=0).drop('time'))
+        lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='time', shearless=shearless)#, dataarray_template=u.isel(time=0).drop('time'))
         array_list = []
 
         with concurrent.futures.ProcessPoolExecutor(max_workers=20) as executor:

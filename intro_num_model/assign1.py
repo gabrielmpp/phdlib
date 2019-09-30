@@ -69,11 +69,11 @@ if __name__ == '__main__':
     print(taylorExp(2, 10) - np.exp(2))
 
     # Gaussian quadrature for sin(pi/2)
-    double = gaussianQuadrature(0, 0.5 * np.pi, np.sin)
+    double = gaussianQuadrature(0, 0.5 * np.pi, 20, np.sin)
     print(double)
 
     # Gaussian quadrature single precision
-    single = gaussianQuadrature(0, 0.5 * np.pi, np.sin, precision="single")
+    single = gaussianQuadrature(0, 0.5 * np.pi, 20, np.sin, precision="single")
 
     print(single - double)
 
