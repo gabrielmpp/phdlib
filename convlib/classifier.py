@@ -138,7 +138,7 @@ class Classifier:
         lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='time', shearless=shearless)#, dataarray_template=u.isel(time=0).drop('time'))
         array_list = []
 
-        with concurrent.futures.ProcessPoolExecutor(max_workers=10) as executor:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=40) as executor:
             for resulting_array in executor.map(lcs, input_arrays):
                 array_list.append(resulting_array)
         eigenvalues = xr.concat(array_list, dim='time')
@@ -171,7 +171,7 @@ if __name__ == '__main__':
     #lcs_type = 'attracting'
     if running_on == 'jasmin':
         config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
-        outpath = '/group_workspaces/jasmin4/upscale/convzones/'
+        outpath = '/group_workspaces/jasmin4/upscale/gmpp/convzones/'
     else:
         outpath = 'data/'
 

@@ -41,7 +41,7 @@ def gaussianQuadrature(a, b, N, f, precision="double"):
     :param precision: str, "single" or "double
     :return: float, result of integration
     """
-    func_dict = {'single': lambda x: np.float32(x), 'double': lambda x: x}
+    func_dict = {'single': np.float32, 'double': np.float64}
 
     I = 0
     dx = (b - a) / N
