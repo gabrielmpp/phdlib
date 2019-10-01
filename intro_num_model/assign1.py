@@ -41,18 +41,18 @@ def gaussianQuadrature(a, b, N, f, precision="double"):
     :param precision: str, "single" or "double
     :return: float, result of integration
     """
+    func_dict = {'single': lambda x: np.float32(x), 'double': lambda x: x}
 
     I = 0
     dx = (b - a) / N
-    if precision == 'double':
-        for i in range(N):
-            I += f(a + (i + 0.5) * dx)
 
-    elif precision == 'single':
+    if precision == 'single':
         a = np.float32(a)
         dx = np.float32(dx)
-        for i in range(N):
-            I += np.float32(f(a + (i + 0.5) * dx))
+
+    for i in range(N):
+
+        I += func_dict[precision](f(a + (i + 0.5) * dx))
 
     return I * dx
 
