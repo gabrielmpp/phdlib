@@ -171,7 +171,7 @@ if __name__ == '__main__':
     #lcs_type = 'attracting'
     if running_on == 'jasmin':
         config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
-        outpath = '/group_workspaces/jasmin4/upscale/gmpp_convzones/'
+        outpath = '/group_workspaces/jasmin4/upscale/convzones/'
     else:
         outpath = 'data/'
 
