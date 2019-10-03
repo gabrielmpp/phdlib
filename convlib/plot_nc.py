@@ -13,12 +13,12 @@ def detect_ridges(gray, sigma=0.5):
 
 
 def read_nc_files():
-    years = range(1980, 1999)
+    years = range(1980, 2008)
     file_list = []
     for year in years:
         year = str(year)
         file_list.append(xr.open_dataarray(
-            f'/group_workspaces/jasmin4/upscale/gmpp_convzones/SL_repelling_{year}.nc'))
+            f'/group_workspaces/jasmin4/upscale/gmpp/convzones/SL_repelling_{year}.nc'))
     full_array = xr.concat(file_list, dim='time')
     return full_array
 
@@ -74,8 +74,8 @@ def plot_local():
 
 
 if __name__ == '__main__':
-    # arr = read_nc_files()
-    arr = xr.open_dataarray('/home/users/gmpp/out/SL_repelling_1980_1998.nc')
+    arr = read_nc_files()
+    #arr = xr.open_dataarray('/home/users/gmpp/out/SL_repelling_1980_1998.nc')
     array_mean = arr.groupby('time.month').var('time')
     array_mean = xr.apply_ufunc(lambda x: np.log(x**0.5), array_mean)
     #array_anomaly = xr.apply_ufunc(lambda x, y: x - y, array_mean, array_mean.mean('month'))

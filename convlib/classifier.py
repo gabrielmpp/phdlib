@@ -36,7 +36,7 @@ class Classifier:
         '''
         pass
 
-    def __call__(self, config: dict, method: str, lcs_type: Optional[str] = None) -> xr.DataArray:
+    def __call__(self, config: dict, method: str, lcs_type: Optional[str] = None, lcs_time_len: Optional[int] = 4) -> xr.DataArray:
         """
 
         :rtype: xr.DataArray
@@ -55,7 +55,7 @@ class Classifier:
             classified_array = self._conv_method(u, v)
         elif self.method == 'lagrangian':
             assert isinstance(lcs_type, str), 'lcs_type must be string'
-            classified_array = self._lagrangian_method(u, v, lcs_type)
+            classified_array = self._lagrangian_method(u, v, lcs_type, lcs_time_len)
         else:
             method = self.method
             raise ValueError(f'Method {method} not supported')
@@ -135,13 +135,14 @@ class Classifier:
         input_arrays = []
         for label, group in ds_groups: # have to do that because bloody groupby returns the labels
             input_arrays.append(group)
-        lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='time', shearless=shearless)#, dataarray_template=u.isel(time=0).drop('time'))
-        array_list = []
 
-        with concurrent.futures.ProcessPoolExecutor(max_workers=40) as executor:
+        lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='time', shearless=shearless)
+        array_list = []
+        with concurrent.futures.ProcessPoolExecutor(max_workers=10) as executor:
             for resulting_array in executor.map(lcs, input_arrays):
                 array_list.append(resulting_array)
         eigenvalues = xr.concat(array_list, dim='time')
+
         # from xrviz.dashboard import Dashboard
         # dashboard = Dashboard(eigenvalues)
         #dashboard.show()
@@ -160,6 +161,7 @@ if __name__ == '__main__':
     running_on = str(sys.argv[1])
     lcs_type = str(sys.argv[2])
     year = str(sys.argv[3])
+    lcs_time_len = 20 # * 6 hours intervals
     #running_on = ''
     #lcs_type = 'repelling'
     #year = 2000
@@ -175,6 +177,6 @@ if __name__ == '__main__':
     else:
         outpath = 'data/'
 
-    classified_array1 = classifier(config, method='lagrangian', lcs_type=lcs_type)
+    classified_array1 = classifier(config, method='lagrangian', lcs_type=lcs_type, lcs_time_len=lcs_time_len)
 
-    classified_array1.to_netcdf(f'{outpath}SL_{lcs_type}_{year}.nc')
+    classified_array1.to_netcdf(f'{outpath}SL_{lcs_type}_{year}_lcstimelen_{lcs_time_len}.nc')
