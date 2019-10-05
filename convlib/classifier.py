@@ -13,6 +13,7 @@ config = {
     'data_basepath': '/media/gabriel/gab_hd/data/sample_data/',
     'u_filename': 'viwve_ERA5_6hr_2000010100-2000123118.nc',
     'v_filename': 'viwvn_ERA5_6hr_2000010100-2000123118.nc',
+    'tcwv_filename': 'tcwv_ERA5_6hr_2000010100-2000123118.nc',
     'time_freq': '6H',
     'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-02-07T18:00:00'),
                    'latitude': slice(15, -50),
@@ -72,20 +73,30 @@ class Classifier:
 
         u = xr.open_dataarray(self.config['data_basepath'] + self.config['u_filename'])
         v = xr.open_dataarray(self.config['data_basepath'] + self.config['v_filename'])
+        tcwv = xr.open_dataarray(self.config['data_basepath'] + self.config['tcwv_filename'])
+
         u.coords['longitude'].values = (u.coords['longitude'].values + 180) % 360 - 180
         v.coords['longitude'].values = (v.coords['longitude'].values + 180) % 360 - 180
+        tcwv.coords['longitude'].values = (tcwv.coords['longitude'].values + 180) % 360 - 180
+
         u = u.sel(self.config['array_slice'])
         v = v.sel(self.config['array_slice'])
+        tcwv = tcwv.sel(self.config['array_slice'])
+
+
         assert pd.infer_freq(u.time.values) == pd.infer_freq(v.time.values), "u and v should have equal time frequencies"
         data_time_freq = pd.infer_freq(u.time.values)
         if data_time_freq != self.config['time_freq']:
             print("Resampling data to {}".format(self.config['time_freq']))
             u = u.resample(time=self.config['time_freq']).mean('time')
             v = v.resample(time=self.config['time_freq']).mean('time')
+            tcwv = tcwv.resample(time=self.config['time_freq']).mean('time')
+
         if 'viwv' in self.config['u_filename']:
             print("Applying unit conversion")
-            u = u / 100
-            v = v / 100
+            u = u / tcwv.values
+            v = v / tcwv.values
+            print("Done unit conversion")
 
 
         new_lon = np.linspace(u.longitude[0].values, u.longitude[-1].values, int(u.longitude.values.shape[0] * 0.5))
@@ -161,13 +172,15 @@ if __name__ == '__main__':
     running_on = str(sys.argv[1])
     lcs_type = str(sys.argv[2])
     year = str(sys.argv[3])
-    lcs_time_len = 20 # * 6 hours intervals
+    lcs_time_len = 4 # * 6 hours intervals
     #running_on = ''
     #lcs_type = 'repelling'
     #year = 2000
     config['array_slice']['time'] = slice(f'{year}-01-01T00:00:00', f'{year}-12-31T18:00:00')
     config['u_filename'] = f'viwve_ERA5_6hr_{year}010100-{year}123118.nc'
     config['v_filename'] = f'viwvn_ERA5_6hr_{year}010100-{year}123118.nc'
+    config['tcwv_filename'] = f'tcwv_ERA5_6hr_{year}010100-{year}123118.nc'
+
 
     #running_on =''
     #lcs_type = 'attracting'

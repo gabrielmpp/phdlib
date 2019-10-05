@@ -14,7 +14,7 @@ from sklearn.preprocessing import MinMaxScaler
 LCS_TYPES = ['attracting', 'repelling']
 
 
-def double_gyre(x, y, t, freq=0.1, epsilon=0.25):
+def double_gyre(x, y, t, freq=0.1, epsilon=0.25, nt=None):
     """
     Function to compute the double gyre analytically
 
@@ -27,7 +27,14 @@ def double_gyre(x, y, t, freq=0.1, epsilon=0.25):
     """
 
     omega = freq*2*np.pi
-    A = 0.1
+    try_to_make_full_turn = True
+
+    if try_to_make_full_turn:
+        A = 2*np.pi*0.5*(x.shape[0]+x.shape[1])/nt
+    else:
+        A = 0.1
+
+    print(A)
     a = epsilon*np.sin(omega * t)
     b = 1 - 2*epsilon*np.sin(omega*t)
     f = a*x**2 + b*x
@@ -146,14 +153,13 @@ class LCS:
             y_buffer = positions_y + \
                        timestep * v.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
                                                                 longitude=lon.tolist(),
-                                                                kwargs={'fill_value': None}).values
+                                                                kwargs={'fill_value': 'extrapolate'}).values
 
             x_buffer = positions_x + \
                        timestep * u.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
                                                                 longitude=lon.tolist(),
-                                                                kwargs={'fill_value': None}).values
+                                                                kwargs={'fill_value': 'extrapolate'}).values
             # ---- Updating positions ---- #
-
             positions_x = x_buffer
             positions_y = y_buffer
 
@@ -282,14 +288,14 @@ def find_maxima(eigenarray: xr.DataArray):
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
 
-    nt = 15
+    nt = 200
     nx = 120
     ny = 60
     dx = 1
     epsilon = 0
     mode = 'repelling'
     backwards = True
-    shearless = True
+    shearless = False
     latlon_array = xr.DataArray(np.zeros([ny, nx, nt]), dims=['latitude', 'longitude', 't'],
                          coords={'longitude': np.linspace(-80, -80+nx*dx, nx),
                                  'latitude': np.linspace(-60, -60+nx*dx, ny), 't': np.linspace(0, 1, nt)})
@@ -306,7 +312,7 @@ if __name__ == '__main__':
     u = []
     v = []
     for t in cartesian_array.t.values:
-        v_temp, u_temp = double_gyre(grid[1], grid[0], t, epsilon)
+        v_temp, u_temp = double_gyre(grid[1], grid[0], t, epsilon, nt=cartesian_array.t.values.shape[0                                                                                              ])
         u.append(u_temp)
         v.append(v_temp)
 
@@ -328,9 +334,9 @@ if __name__ == '__main__':
     #   plt.show()
 
     if backwards:
-        lcs = LCS(mode, -1, dataarray_template=None, timedim='t', shearless=shearless)
+        lcs = LCS(mode, -1000, dataarray_template=None, timedim='t', shearless=shearless)
     else:
-        lcs = LCS(mode, 1, dataarray_template=None, timedim='t', shearless=shearless)
+        lcs = LCS(mode, 1000, dataarray_template=None, timedim='t', shearless=shearless)
 
     eigenvalues = lcs(u=u, v=v)
 
@@ -344,6 +350,7 @@ if __name__ == '__main__':
         plt.streamplot(x=u.longitude.values, y=u.latitude.values, u=u.isel(t=time).values,
                        v=v.isel(t=time).values, color=mag.isel(t=time).values)
         plt.show()
+    print(u.max())
     from xrviz.dashboard import Dashboard
     dashboard = Dashboard(u)
     dashboard.show()
