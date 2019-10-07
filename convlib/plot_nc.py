@@ -4,6 +4,7 @@ import cartopy.feature as cfeature
 import cartopy.crs as ccrs
 import numpy as np
 from skimage.morphology import skeletonize
+from typing import List
 from skimage.feature import hessian_matrix, hessian_matrix_eigvals, canny
 
 def detect_ridges(gray, sigma=0.5):
@@ -12,14 +13,26 @@ def detect_ridges(gray, sigma=0.5):
     return i2
 
 
-def read_nc_files():
-    years = range(1980, 2008)
+def read_nc_files(region,
+                  basepath="/group_workspaces/jasmin4/upscale/gmpp/convzones/",
+                  filename = "SL_repelling_{year}_lcstimelen_4.nc",
+                  year_range = range(1980, 2008)):
+    """
+    Method to ingest ncdf files in a given time period
+    :param region:
+    :return:
+    """
+    print("*---- Starting reading data ----*")
+    years = year_range
     file_list = []
     for year in years:
+        print(f'Reading year {year}')
         year = str(year)
-        file_list.append(xr.open_dataarray(
-            f'/group_workspaces/jasmin4/upscale/gmpp/convzones/SL_repelling_{year}.nc'))
+        array = xr.open_dataarray(basepath + filename.format(year=year))
+        array = array.sel(domains[region])
+        file_list.append(array)
     full_array = xr.concat(file_list, dim='time')
+    print('*---- Finished reading data ----*')
     return full_array
 
 
@@ -72,22 +85,35 @@ def plot_local():
         plt.savefig(f'./tempfigs/SL{time}.png')
         plt.close()
 
+domains = dict(
+    AITCZ = dict(latitude=slice(-5, 15), longitude=slice(-50, -13)),
+    SACZ = dict(latitude=slice(-40,-5), longitude=slice(-62,-20))
+    )
 
 if __name__ == '__main__':
-    arr = read_nc_files()
+    region = "AITCZ"
+
+    arr = read_nc_files(region)
+
     #arr = xr.open_dataarray('/home/users/gmpp/out/SL_repelling_1980_1998.nc')
-    array_mean = arr.groupby('time.month').var('time')
-    array_mean = xr.apply_ufunc(lambda x: np.log(x**0.5), array_mean)
+    array_mean = arr.groupby('time.month').mean('time')
+    #array_mean = xr.apply_ufunc(lambda x: np.log(x**0.5), array_mean)
     #array_anomaly = xr.apply_ufunc(lambda x, y: x - y, array_mean, array_mean.mean('month'))
     #array_mean = array_anomaly # TODO just to plot var
     max = array_mean.max() # TODO REPLACE FOR ARRAY_ANOMALY
     min = array_mean.min()
     for month in range(1,13):
-        plt.figure(figsize=[10,10])
-        array_mean.sel(month=month).plot(cmap='RdBu', vmax=0.8*max,
-                                         vmin=0.8*min)
+        fig = plt.figure()
+        ax = plt.axes(projection=ccrs.PlateCarree())
+        array_mean.sel(month=month).plot.contourf(levels=10,cmap='RdBu', vmax=0.8*max,
+                                         vmin=0.8*min, ax=ax, transform=ccrs.PlateCarree())
+        ax.coastlines()
+        ax.coastlines()
+        ax.gridlines(draw_labels=False)
+        fig.set_figheight(8)
+        fig.set_figwidth(15)
         #TODO FIG IS NAMED VAR
         plt.savefig(
-            f'/home/users/gmpp/phdlib/convlib/tempfigs/sl_repelling_month_{month}_var.png'
+            '/home/users/gmpp/phdlib/convlib/tempfigs/sl_repelling_month_{month}_var_{region}.png'.format(month="{:02d}".format(month), region=region)
         )
         plt.close()

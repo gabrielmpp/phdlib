@@ -4,7 +4,7 @@ import sys
 if __name__ == '__main__':
     logs_path = '/home/users/gmpp/logs/'
     python = '/home/users/gmpp/miniconda2/envs/phd37/bin/python'
-    script_paths = ['/home/users/gmpp/phdlib/download_era/download_era_tcwv.py']
+    script_paths = ['/home/users/gmpp/phdlib/download_era/download_era_temp.py']
     years = np.arange(1979,2010,1)
     for script_path in script_paths:
         for year in years:

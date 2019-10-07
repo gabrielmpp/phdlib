@@ -126,7 +126,7 @@ class Classifier:
         time_dir = 'backward'
         u = get_seq_mask(u, 'time', lcs_time_len)
         v = get_seq_mask(v, 'time', lcs_time_len)
-        shearless = True
+        shearless = False
 
 
         timestep = self.config['time_freq']

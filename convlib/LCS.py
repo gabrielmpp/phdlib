@@ -153,12 +153,12 @@ class LCS:
             y_buffer = positions_y + \
                        timestep * v.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
                                                                 longitude=lon.tolist(),
-                                                                kwargs={'fill_value': 'extrapolate'}).values
+                                                                kwargs={'fill_value': 0}).values
 
             x_buffer = positions_x + \
                        timestep * u.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
                                                                 longitude=lon.tolist(),
-                                                                kwargs={'fill_value': 'extrapolate'}).values
+                                                                kwargs={'fill_value': 0}).values
             # ---- Updating positions ---- #
             positions_x = x_buffer
             positions_y = y_buffer
