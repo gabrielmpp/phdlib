@@ -16,8 +16,8 @@ config = {
     'tcwv_filename': 'tcwv_ERA5_6hr_2000010100-2000123118.nc',
     'time_freq': '6H',
     'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-02-07T18:00:00'),
-                   'latitude': slice(15, -50),
-                   'longitude': slice(-100, -5),
+                   'latitude': slice(-15, -50),
+                   'longitude': slice(-90, -5),
                    # 'latitude': slice(-20, -35),
                    # 'longitude': slice(-55, -35)
                     }
@@ -49,6 +49,7 @@ class Classifier:
         u, v = self._read_data
         u = to_cartesian(u)
         v = to_cartesian(v)
+        print("*---- Applying classification method ----*")
 
         if self.method == 'Q':
             classified_array = self._Q_method(u, v)
@@ -60,7 +61,6 @@ class Classifier:
         else:
             method = self.method
             raise ValueError(f'Method {method} not supported')
-        print("*---- Applying classification method ----*")
 
         return classified_array
 
@@ -70,7 +70,7 @@ class Classifier:
         :return: tuple of xarray.dataarray
         """
         print("*---- Reading input data ----*")
-
+        ########### TODO WARNING SELECTING LIMITED NUMB OF DAYS
         u = xr.open_dataarray(self.config['data_basepath'] + self.config['u_filename'])
         v = xr.open_dataarray(self.config['data_basepath'] + self.config['v_filename'])
         tcwv = xr.open_dataarray(self.config['data_basepath'] + self.config['tcwv_filename'])
@@ -82,15 +82,16 @@ class Classifier:
         u = u.sel(self.config['array_slice'])
         v = v.sel(self.config['array_slice'])
         tcwv = tcwv.sel(self.config['array_slice'])
+        # tcwv = tcwv.where(tcwv > 10, 10)
 
 
         assert pd.infer_freq(u.time.values) == pd.infer_freq(v.time.values), "u and v should have equal time frequencies"
         data_time_freq = pd.infer_freq(u.time.values)
         if data_time_freq != self.config['time_freq']:
             print("Resampling data to {}".format(self.config['time_freq']))
-            u = u.resample(time=self.config['time_freq']).mean('time')
-            v = v.resample(time=self.config['time_freq']).mean('time')
-            tcwv = tcwv.resample(time=self.config['time_freq']).mean('time')
+            u = u.resample(time=self.config['time_freq']).interpolate('linear')
+            v = v.resample(time=self.config['time_freq']).interpolate('linear')
+            tcwv = tcwv.resample(time=self.config['time_freq']).interpolate('linear')
 
         if 'viwv' in self.config['u_filename']:
             print("Applying unit conversion")
@@ -123,6 +124,7 @@ class Classifier:
         return div
 
     def _lagrangian_method(self, u, v, lcs_type: str, lcs_time_len=4) -> xr.DataArray:
+        parallel = True
         time_dir = 'backward'
         u = get_seq_mask(u, 'time', lcs_time_len)
         v = get_seq_mask(v, 'time', lcs_time_len)
@@ -149,9 +151,16 @@ class Classifier:
 
         lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='time', shearless=shearless)
         array_list = []
-        with concurrent.futures.ProcessPoolExecutor(max_workers=10) as executor:
-            for resulting_array in executor.map(lcs, input_arrays):
-                array_list.append(resulting_array)
+        if parallel:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=10) as executor:
+                for i, resulting_array in enumerate(executor.map(lcs, input_arrays)):
+                    array_list.append(resulting_array)
+                    sys.stderr.write('\rdone {0:%}'.format(i/len(input_arrays)))
+        else:
+            for i, input_array in enumerate(input_arrays):
+                array_list.append(lcs(input_array, verbose=True))
+                sys.stderr.write('\rdone {0:%}'.format(i / len(input_arrays)))
+
         eigenvalues = xr.concat(array_list, dim='time')
 
         # from xrviz.dashboard import Dashboard
@@ -172,7 +181,7 @@ if __name__ == '__main__':
     running_on = str(sys.argv[1])
     lcs_type = str(sys.argv[2])
     year = str(sys.argv[3])
-    lcs_time_len = 4 # * 6 hours intervals
+    lcs_time_len = 1  # * 6 hours intervals
     #running_on = ''
     #lcs_type = 'repelling'
     #year = 2000
@@ -187,9 +196,10 @@ if __name__ == '__main__':
     if running_on == 'jasmin':
         config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
         outpath = '/group_workspaces/jasmin4/upscale/gmpp/convzones/'
+        #outpath = '/home/users/gmpp/'
     else:
         outpath = 'data/'
 
     classified_array1 = classifier(config, method='lagrangian', lcs_type=lcs_type, lcs_time_len=lcs_time_len)
-
+    print("*---- Saving file ----*")
     classified_array1.to_netcdf(f'{outpath}SL_{lcs_type}_{year}_lcstimelen_{lcs_time_len}.nc')

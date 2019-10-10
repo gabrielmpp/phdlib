@@ -49,7 +49,8 @@ class LCS:
     Methods to compute LCS in 2D wind fields in xarrray dataarrays
     """
 
-    def __init__(self, lcs_type: str, timestep: float = 1, dataarray_template=None, timedim='time', shearless=False):
+    def __init__(self, lcs_type: str, timestep: float = 1, dataarray_template=None, timedim='time',
+                 shearless=False):
         assert isinstance(lcs_type, str), "Parameter lcs_type expected to be str"
         assert lcs_type in LCS_TYPES, f"lcs_type {lcs_type} not available"
         self.lcs_type = lcs_type
@@ -59,7 +60,7 @@ class LCS:
 
         self.dataarray_template = dataarray_template
 
-    def __call__(self, ds: xr.Dataset = None, u: xr.DataArray = None, v: xr.DataArray = None) -> xr.DataArray:
+    def __call__(self, ds: xr.Dataset = None, u: xr.DataArray = None, v: xr.DataArray = None, verbose=False) -> xr.DataArray:
 
         """
         :param ds: xarray dataset containing u and v as variables
@@ -68,9 +69,13 @@ class LCS:
         :param timestep: float
         :return: xarray dataarray of eigenvalue
         """
+        global verboseprint
+
+        verboseprint = print if verbose else lambda *a, **k: None
+
         timestep = self.timestep
         timedim = self.timedim
-
+        self.verbose = verbose
         if isinstance(ds, xr.Dataset):
             u = ds.u
             v = ds.v
@@ -86,17 +91,17 @@ class LCS:
         assert set(u_dims) == {'latitude', 'longitude', timedim}, 'array dims should be latitude and longitude only'
 
         if not (hasattr(u, "x") and hasattr(u, "y")):
-            print("Ascribing x and y coords do u")
+            verboseprint("Ascribing x and y coords do u")
             u = to_cartesian(u)
         if not (hasattr(v, "x") and hasattr(v, "y")):
-            print("Ascribing x and y coords do v")
+            verboseprint("Ascribing x and y coords do v")
             v = to_cartesian(v)
 
-        print("*---- Computing deformation tensor ----*")
+        verboseprint("*---- Computing deformation tensor ----*")
         def_tensor = self._compute_deformation_tensor(u, v, timestep)
         def_tensor = def_tensor.stack({'points': ['latitude', 'longitude']})
         def_tensor = def_tensor.dropna(dim='points')
-        print("*---- Computing eigenvalues ----*")
+        verboseprint("*---- Computing eigenvalues ----*")
         eigenvalues = xr.apply_ufunc(lambda x: self._compute_eigenvalues(x), def_tensor.groupby('points'))
         eigenvalues = eigenvalues.unstack('points')
         eigenvalues = eigenvalues.isel(derivatives=0).drop('derivatives')
@@ -136,32 +141,37 @@ class LCS:
             times.reverse()  # inplace
 
         # initializing and integrating
-        y_futur = u.y.values
-        x_futur = u.x.values
-        positions_x, positions_y = np.meshgrid(x_futur, y_futur)
+
+        positions_x, positions_y = np.meshgrid(u.x.values,  u.y.values)
 
         initial_pos = xr.DataArray()
 
         for time in times:
-            print(f'Propagating time {time}')
-            lat, lon = xy_to_latlon(y=positions_y, x=positions_x)
-            lat = lat[:, 0]  # lat is constant along cols
-            lon = lon[0, :]  # lon is contant along rows
+            verboseprint(f'Propagating time {time}')
+            subtimes = np.arange(0, 10, 1).tolist()
+            subtimes_len = len(subtimes)
 
-            # ---- propagating positions ---- #
+            for subtime in subtimes:
+                subtimestep = timestep / subtimes_len
 
-            y_buffer = positions_y + \
-                       timestep * v.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
-                                                                longitude=lon.tolist(),
-                                                                kwargs={'fill_value': 0}).values
+                lat, lon = xy_to_latlon(y=positions_y, x=positions_x) ] #TODO There is a problem here when lcstimelen > 1
+                lat = lat[:, 0]  # lat is constant along cols
+                lon = lon[0, :]  # lon is constant along rows
 
-            x_buffer = positions_x + \
-                       timestep * u.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
-                                                                longitude=lon.tolist(),
-                                                                kwargs={'fill_value': 0}).values
-            # ---- Updating positions ---- #
-            positions_x = x_buffer
-            positions_y = y_buffer
+                # ---- propagating positions ---- #
+
+                y_buffer = positions_y + \
+                           subtimestep * v.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
+                                                                    longitude=lon.tolist(),
+                                                                    kwargs={'fill_value': None}).values
+
+                x_buffer = positions_x + \
+                           subtimestep * u.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
+                                                                    longitude=lon.tolist(),
+                                                                    kwargs={'fill_value': None}).values
+                # ---- Updating positions ---- #
+                positions_x = x_buffer
+                positions_y = y_buffer
 
         positions_x = xr.DataArray(positions_x, dims=['latitude', 'longitude'],
                                    coords=[u.latitude.values,u.longitude.values])
@@ -211,7 +221,6 @@ class LCS:
         # from xrviz.dashboard import Dashboard
         # dashboard = Dashboard(def_tensor)
         # dashboard.show()
-        print(def_tensor)
         return def_tensor
 
     def _compute_deformation_tensor_old(self, u: xr.DataArray, v: xr.DataArray, timestep: float) -> xr.DataArray:
@@ -350,7 +359,6 @@ if __name__ == '__main__':
         plt.streamplot(x=u.longitude.values, y=u.latitude.values, u=u.isel(t=time).values,
                        v=v.isel(t=time).values, color=mag.isel(t=time).values)
         plt.show()
-    print(u.max())
     from xrviz.dashboard import Dashboard
     dashboard = Dashboard(u)
     dashboard.show()

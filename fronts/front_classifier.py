@@ -2,14 +2,16 @@ import xarray as xr
 import numpy as np
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
+
 base_path = '/gws/nopw/j04/primavera1/observations/ERA5/'
 files = dict(pres='sp_ERA5_6hr_{year}010100-{year}123118.nc',
              v='v_925_ERA5_6hrPlevPt_{year}010100-{year}123118.nc',
-             t='t_700_ERA5_6hrPlevPt_{year}010100-{year}123118.nc')
+             t='t_925_ERA5_6hrPlevPt_{year}010100-{year}123118.nc')
 
 domains = dict(
     AITCZ=dict(latitude=slice(-5, 15), longitude=slice(-50, -13)),
-    SACZ=dict(latitude=slice(-5,-45), longitude=slice(-80,-10)))
+    SACZ=dict(latitude=slice(-5, -45), longitude=slice(-80, -10)))
+
 
 def read_nc_files(region,
                   basepath,
@@ -39,36 +41,35 @@ def read_nc_files(region,
     print('*---- Finished reading data ----*')
     return full_array
 
+
 def main():
     region = "SACZ"
-    t = read_nc_files(region, base_path, filename=files['t'], year_range=range(1980, 2008))
-    v = read_nc_files(region, base_path, filename=files['v'], year_range=range(1980, 2008))
-    p = read_nc_files(region, base_path, filename=files['pres'], year_range=range(1980, 2008))
+    final_year = 2008
+    initial_year = 1990
+
+    t = read_nc_files(region, base_path, filename=files['t'], year_range=range(initial_year, final_year))
+    v = read_nc_files(region, base_path, filename=files['v'], year_range=range(initial_year, final_year))
+    p = read_nc_files(region, base_path, filename=files['pres'], year_range=range(initial_year, final_year))
 
     t = t.diff("time")
     v = xr.apply_ufunc(lambda x: np.sign(x), v)
     v = v.diff("time")
     p = p.diff("time")
     p = p.where(p > 0, 0)
-    p = p.where(np.abs(v)==2, 0)
+    p = p.where(np.abs(v) == 2, 0)
     p = p.where(t < 0, 0)
     final = p.where(p == 0, 1)
 
     # --- Plot --- #
     fig = plt.figure()
     ax = plt.axes(projection=ccrs.PlateCarree())
-    final.sum('time').plot(ax=ax, transform=ccrs.PlateCarree())
+    (final.sum('time')/(final_year-initial_year)).plot(ax=ax, transform=ccrs.PlateCarree())
     ax.coastlines()
     plt.savefig("temp.png")
-
 
     print(t)
     print(v)
     print(p)
 
+
 main()
-
-
-
-
-

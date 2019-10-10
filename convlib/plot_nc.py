@@ -91,7 +91,7 @@ domains = dict(
     )
 
 if __name__ == '__main__':
-    region = "AITCZ"
+    region = "SACZ"
 
     arr = read_nc_files(region)
 
