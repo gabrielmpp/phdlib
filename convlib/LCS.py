@@ -154,7 +154,7 @@ class LCS:
             for subtime in subtimes:
                 subtimestep = timestep / subtimes_len
 
-                lat, lon = xy_to_latlon(y=positions_y, x=positions_x) ] #TODO There is a problem here when lcstimelen > 1
+                lat, lon = xy_to_latlon(y=positions_y, x=positions_x)  #TODO There is a problem here when lcstimelen > 1
                 lat = lat[:, 0]  # lat is constant along cols
                 lon = lon[0, :]  # lon is constant along rows
 
