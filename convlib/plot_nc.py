@@ -6,6 +6,8 @@ import numpy as np
 from skimage.morphology import skeletonize
 from typing import List
 from skimage.feature import hessian_matrix, hessian_matrix_eigvals, canny
+from convlib.xr_tools import read_nc_files
+
 
 def detect_ridges(gray, sigma=0.5):
     hxx, hyy, hxy = hessian_matrix(gray, sigma)
@@ -13,35 +15,11 @@ def detect_ridges(gray, sigma=0.5):
     return i2
 
 
-def read_nc_files(region,
-                  basepath="/group_workspaces/jasmin4/upscale/gmpp/convzones/",
-                  filename = "SL_repelling_{year}_lcstimelen_4.nc",
-                  year_range = range(1980, 2008)):
-    """
-    Method to ingest ncdf files in a given time period
-    :param region:
-    :return:
-    """
-    print("*---- Starting reading data ----*")
-    years = year_range
-    file_list = []
-    for year in years:
-        print(f'Reading year {year}')
-        year = str(year)
-        array = xr.open_dataarray(basepath + filename.format(year=year))
-        array = array.sel(domains[region])
-        file_list.append(array)
-    full_array = xr.concat(file_list, dim='time')
-    print('*---- Finished reading data ----*')
-    return full_array
-
-
 def plot_local():
     filepath_re = 'data/SL_repelling.nc'
     filepath_at = 'data/SL_attracting.nc'
     filepath_re_momentum = 'data/SL_repelling_momentum.nc'
     filepath_at_momentum = 'data/SL_attracting_momentum.nc'
-
 
     array_re = xr.open_dataarray(filepath_re)
     array_at = xr.open_dataarray(filepath_at)
@@ -86,8 +64,8 @@ def plot_local():
         plt.close()
 
 domains = dict(
-    AITCZ = dict(latitude=slice(-5, 15), longitude=slice(-50, -13)),
-    SACZ = dict(latitude=slice(-40,-5), longitude=slice(-62,-20))
+    AITCZ=dict(latitude=slice(-5, 15), longitude=slice(-50, -13)),
+    SACZ=dict(latitude=slice(-40,-5), longitude=slice(-62,-20))
     )
 
 if __name__ == '__main__':
@@ -102,10 +80,11 @@ if __name__ == '__main__':
     #array_mean = array_anomaly # TODO just to plot var
     max = array_mean.max() # TODO REPLACE FOR ARRAY_ANOMALY
     min = array_mean.min()
-    for month in range(1,13):
+    for month in range(1, 13):
+        print(f'Plotting month {month}')
         fig = plt.figure()
-        ax = plt.axes(projection=ccrs.PlateCarree())
-        array_mean.sel(month=month).plot.contourf(levels=10,cmap='RdBu', vmax=0.8*max,
+        ax = plt.axes(projection=ccrs.Orthographic(-40,-20))
+        array_mean.sel(month=month).plot.contourf(levels=10, cmap='RdBu', vmax=0.8*max,
                                          vmin=0.8*min, ax=ax, transform=ccrs.PlateCarree())
         ax.coastlines()
         ax.coastlines()

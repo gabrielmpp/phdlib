@@ -1,5 +1,9 @@
 import xarray as xr
 from skimage.feature import blob_dog, blob_log, blob_doh
+from convlib.xr_tools import read_nc_files
+from skimage import measure
+from skimage import filters
+
 
 class Tracker:
 
@@ -57,3 +61,14 @@ class Normalizer():
         X = X * self._stdv + self._mean
 
         return X.unstack('alongwith')
+
+
+if __name__ == '__main__':
+    array = read_nc_files(year_range=range(2000, 2001))
+    threshold = array.quantile(0.7)
+    array = array.where(array > threshold, 0)
+    array = array.where(array < threshold, 1)
+    #labeled_array = xr.apply_ufunc(lambda x: measure.label(x), array)
+    labeled_array = xr.apply_ufunc(lambda x: measure.label(x),
+                                   array.stack(points=['latitude', 'longitude']).groupby('points'))
+    labeled_array

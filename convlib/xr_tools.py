@@ -4,6 +4,45 @@ from warnings import warn
 import numpy as np
 
 
+domains = dict(
+    AITCZ=dict(latitude=slice(-5, 15), longitude=slice(-50, -13)),
+    SACZ=dict(latitude=slice(-40,-5), longitude=slice(-62,-20))
+    )
+
+
+def read_nc_files(region=None,
+                  basepath="/group_workspaces/jasmin4/upscale/gmpp/convzones/",
+                  filename="SL_repelling_{year}_lcstimelen_1.nc",
+                  year_range=range(2000, 2008)):
+    """
+
+    :param region:
+    :param basepath:
+    :param filename:
+    :param year_range:
+    :return:
+    """
+    print("*---- Starting reading data ----*")
+    years = year_range
+    file_list = []
+    for year in years:
+        print(f'Reading year {year}')
+        year = str(year)
+        try:
+            array = xr.open_dataarray(basepath + filename.format(year=year))
+
+            if not isinstance(region, type(None)):
+                array = array.sel(domains[region])
+
+            file_list.append(array)
+        except:
+            print(f'Year {year} unavailable')
+
+    full_array = xr.concat(file_list, dim='time')
+    print('*---- Finished reading data ----*')
+    return full_array
+
+
 def get_xr_seq(ds: xr.DataArray, seq_dim: str, idx_seq: List[int]):
     """
     Function that create the sequence dimension in overlapping time intervals
