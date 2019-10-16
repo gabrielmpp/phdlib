@@ -26,43 +26,6 @@ class Tracker:
         identified_array = self._identify_features(array)
 
 
-class Normalizer():
-    '''
-    Normalizer for xarray datasets
-    '''
-
-    def __init__(self, alongwith):
-        self._alongwith = alongwith
-
-    def fit(self, X, y=None):
-        '''
-        :ds: xarray  dataset
-        :alongwith: list of sample dimensions
-        '''
-        if isinstance(X, xr.Dataset):
-            X = X.to_array(dim='var')
-
-        X = X.stack({'alongwith': self._alongwith})
-        self._mean = X.mean('alongwith')
-        self._stdv = X.var('alongwith')**0.5
-        return self
-
-    def transform(self, X):
-        if isinstance(X, xr.Dataset):
-            X = X.to_array(dim='var')
-        X = X.stack({'alongwith': self._alongwith})
-        X = (X - self._mean)/self._stdv
-        return X.unstack('alongwith')
-
-    def inverse_transform(self, X):
-        if isinstance(X, xr.Dataset):
-            X = X.to_array(dim='var')
-        X = X.stack({'alongwith': self._alongwith})
-        X = X * self._stdv + self._mean
-
-        return X.unstack('alongwith')
-
-
 if __name__ == '__main__':
     array = read_nc_files(year_range=range(2000, 2001))
     threshold = array.quantile(0.7)
