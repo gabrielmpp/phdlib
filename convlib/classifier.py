@@ -222,7 +222,7 @@ if __name__ == '__main__':
         outpath = 'data/'
 
     classified_array1 = classifier(config, method='lagrangian', lcs_type=lcs_type, lcs_time_len=lcs_time_len,
-                                   find_departure=True, parallel=parallel)
+                                   find_departure=find_departure, parallel=parallel)
     print("*---- Saving file ----*")
     if find_departure:
         classified_array1.to_netcdf(f'{outpath}SL_{lcs_type}_{year}_departuretimelen_{lcs_time_len}.nc')
