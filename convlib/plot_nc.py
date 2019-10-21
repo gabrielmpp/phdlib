@@ -76,15 +76,15 @@ if __name__ == '__main__':
     #arr = xr.open_dataarray('/home/users/gmpp/out/SL_repelling_1980_1998.nc')
     array_mean = arr.groupby('time.month').mean('time')
     #array_mean = xr.apply_ufunc(lambda x: np.log(x**0.5), array_mean)
-    #array_anomaly = xr.apply_ufunc(lambda x, y: x - y, array_mean, array_mean.mean('month'))
+    array_anomaly = xr.apply_ufunc(lambda x, y: x - y, array_mean, array_mean.mean('month'))
     #array_mean = array_anomaly # TODO just to plot var
-    max = array_mean.max() # TODO REPLACE FOR ARRAY_ANOMALY
-    min = array_mean.min()
+    max = array_anomaly.max() # TODO REPLACE FOR ARRAY_ANOMALY
+    min = array_anomaly.min()
     for month in range(1, 13):
         print(f'Plotting month {month}')
         fig = plt.figure()
         ax = plt.axes(projection=ccrs.Orthographic(-40,-20))
-        array_mean.sel(month=month).plot.contourf(levels=10, cmap='RdBu', vmax=0.8*max,
+        array_anomaly.sel(month=month).plot.contourf(levels=10, cmap='RdBu', vmax=0.8*max,
                                          vmin=0.8*min, ax=ax, transform=ccrs.PlateCarree())
         ax.coastlines()
         ax.coastlines()

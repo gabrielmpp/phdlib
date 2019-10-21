@@ -123,66 +123,7 @@ class LCS:
 
         eigenvalues = np.repeat(eigenvalues, 4).reshape(
             [4])  # repeating the same value 4 times just to fill the xr.DataArray in a dummy dimension
-        eigenvalues.shape
         return eigenvalues
-
-    @staticmethod
-    def _parcel_propagation(u, v, timestep, propdim="time"):
-        """
-        Method to propagate the parcel given u and v
-
-        :param u: xr.DataArray zonal wind
-        :param v: xr.DataArray meridional wind
-        :return: tuple of xr.DataArrays containing the final positions of the trajectories
-        """
-
-        times = u[propdim].values.tolist()
-        if timestep < 0:
-            times.reverse()  # inplace
-
-        # initializing and integrating
-
-        positions_x, positions_y = np.meshgrid(u.x.values,  u.y.values)
-
-        initial_pos = xr.DataArray()
-
-        for time in times:
-            verboseprint(f'Propagating time {time}')
-            subtimes = np.arange(0, 10, 1).tolist()
-            subtimes_len = len(subtimes)
-
-            for subtime in subtimes:
-                subtimestep = timestep / subtimes_len
-
-                lat, lon = xy_to_latlon(y=positions_y, x=positions_x)  #TODO There is a problem here when lcstimelen > 1
-                lat = lat[:, 0]  # lat is constant along cols
-                lon = lon[0, :]  # lon is constant along rows
-
-                # ---- propagating positions ---- #
-
-                y_buffer = positions_y + \
-                           subtimestep * v.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
-                                                                    longitude=lon.tolist(),
-                                                                    kwargs={'fill_value': None}).values
-
-                x_buffer = positions_x + \
-                           subtimestep * u.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
-                                                                    longitude=lon.tolist(),
-                                                                    kwargs={'fill_value': None}).values
-                # ---- Updating positions ---- #
-                positions_x = x_buffer
-                positions_y = y_buffer
-
-        positions_x = xr.DataArray(positions_x, dims=['latitude', 'longitude'],
-                                   coords=[u.latitude.values,u.longitude.values])
-        positions_y = xr.DataArray(positions_y, dims=['latitude', 'longitude'],
-                                   coords=[u.latitude.values,u.longitude.values])
-        positions_x['x'] = (('longitude'), u.x.values)
-        positions_x['y'] = (('latitude'), u.y.values)
-        positions_y['x'] = (('longitude'), u.x.values)
-        positions_y['y'] = (('latitude'), u.y.values)
-
-        return positions_x, positions_y
 
     def _compute_deformation_tensor(self, u: xr.DataArray, v: xr.DataArray, timestep: float) -> xr.DataArray:
         """
@@ -192,15 +133,15 @@ class LCS:
         :return: xr.DataArray of the deformation tensor
         """
 
-        x_futur, y_futur = self._parcel_propagation(u, v, timestep, propdim=self.timedim)
+        x_departure, y_departure = parcel_propagation(u, v, timestep, propdim=self.timedim)
         # u, v, eigengrid = interpolate_c_stagger(u, v)
-        dx = x_futur.x.diff('longitude')
-        dy = y_futur.y.diff('latitude').values
+        dx = x_departure.x.diff('longitude')
+        dy = y_departure.y.diff('latitude').values
 
-        dxdx = x_futur.diff('longitude') / x_futur.x.diff('longitude')
-        dxdy = x_futur.diff('latitude') / x_futur.y.diff('latitude')
-        dydy = y_futur.diff('latitude') / y_futur.y.diff('latitude')
-        dydx = y_futur.diff('longitude') / y_futur.x.diff('longitude')
+        dxdx = x_departure.diff('longitude') / x_departure.x.diff('longitude')
+        dxdy = x_departure.diff('latitude') / x_departure.y.diff('latitude')
+        dydy = y_departure.diff('latitude') / y_departure.y.diff('latitude')
+        dydx = y_departure.diff('longitude') / y_departure.x.diff('longitude')
 
         dxdx = dxdx.transpose('latitude', 'longitude')
         dxdy = dxdy.transpose('latitude', 'longitude').drop('x').drop('y')
@@ -275,6 +216,67 @@ class LCS:
         def_tensor = def_tensor.rename({'variable': 'derivatives'})
         def_tensor = def_tensor.transpose('derivatives', 'latitude', 'longitude')
         return def_tensor
+
+
+def parcel_propagation(u, v, timestep, propdim="time", verbose=True):
+    """
+    Method to propagate the parcel given u and v
+
+    :param propdim:
+    :param timestep:
+    :param u: xr.DataArray zonal wind
+    :param v: xr.DataArray meridional wind
+    :return: tuple of xr.DataArrays containing the final positions of the trajectories
+    """
+    verboseprint = print if verbose else lambda *a, **k: None
+
+    times = u[propdim].values.tolist()
+    if timestep < 0:
+        times.reverse()  # inplace
+
+    # initializing and integrating
+
+    positions_x, positions_y = np.meshgrid(u.x.values,  u.y.values)
+
+    initial_pos = xr.DataArray()
+
+    for time in times:
+        verboseprint(f'Propagating time {time}')
+        subtimes = np.arange(0, 10, 1).tolist()
+        subtimes_len = len(subtimes)
+
+        for subtime in subtimes:
+            subtimestep = timestep / subtimes_len
+
+            lat, lon = xy_to_latlon(y=positions_y, x=positions_x)  #TODO There is a problem here when lcstimelen > 1
+            lat = lat[:, 0]  # lat is constant along cols
+            lon = lon[0, :]  # lon is constant along rows
+
+            # ---- propagating positions ---- #
+
+            y_buffer = positions_y + \
+                       subtimestep * v.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
+                                                                longitude=lon.tolist(),
+                                                                kwargs={'fill_value': None}).values
+
+            x_buffer = positions_x + \
+                       subtimestep * u.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
+                                                                longitude=lon.tolist(),
+                                                                kwargs={'fill_value': None}).values
+            # ---- Updating positions ---- #
+            positions_x = x_buffer
+            positions_y = y_buffer
+
+    positions_x = xr.DataArray(positions_x, dims=['latitude', 'longitude'],
+                               coords=[u.latitude.values,u.longitude.values])
+    positions_y = xr.DataArray(positions_y, dims=['latitude', 'longitude'],
+                               coords=[u.latitude.values,u.longitude.values])
+    positions_x['x'] = (('longitude'), u.x.values)
+    positions_x['y'] = (('latitude'), u.y.values)
+    positions_y['x'] = (('longitude'), u.x.values)
+    positions_y['y'] = (('latitude'), u.y.values)
+
+    return positions_x, positions_y
 
 
 def find_maxima(eigenarray: xr.DataArray):

@@ -1,7 +1,7 @@
 import xarray as xr
 from meteomath import to_cartesian, divergence
 import pandas as pd
-from convlib.LCS import LCS
+from convlib.LCS import LCS, parcel_propagation
 import sys
 from typing import Optional
 import numpy as np
@@ -16,7 +16,7 @@ config = {
     'tcwv_filename': 'tcwv_ERA5_6hr_2000010100-2000123118.nc',
     'time_freq': '6H',
     'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-02-07T18:00:00'),
-                   'latitude': slice(-15, -50),
+                   'latitude': slice(15, -50),
                    'longitude': slice(-90, -5),
                    # 'latitude': slice(-20, -35),
                    # 'longitude': slice(-55, -35)
@@ -37,7 +37,8 @@ class Classifier:
         '''
         pass
 
-    def __call__(self, config: dict, method: str, lcs_type: Optional[str] = None, lcs_time_len: Optional[int] = 4) -> xr.DataArray:
+    def __call__(self, config: dict, method: str, lcs_type: Optional[str] = None, lcs_time_len: Optional[int] = 4,
+                 find_departure: bool = False, parallel: bool = False) -> xr.DataArray:
         """
 
         :rtype: xr.DataArray
@@ -45,6 +46,7 @@ class Classifier:
         print(f"*---- Calling classifier with method {method} ----*")
         self.method = method
         self.config = config
+        self.parallel = parallel
 
         u, v = self._read_data
         u = to_cartesian(u)
@@ -57,7 +59,7 @@ class Classifier:
             classified_array = self._conv_method(u, v)
         elif self.method == 'lagrangian':
             assert isinstance(lcs_type, str), 'lcs_type must be string'
-            classified_array = self._lagrangian_method(u, v, lcs_type, lcs_time_len)
+            classified_array = self._lagrangian_method(u, v, lcs_type, lcs_time_len, find_departure=find_departure)
         else:
             method = self.method
             raise ValueError(f'Method {method} not supported')
@@ -123,8 +125,8 @@ class Classifier:
        # classified_array = div.where(div<-0.5e-3)
         return div
 
-    def _lagrangian_method(self, u, v, lcs_type: str, lcs_time_len=4) -> xr.DataArray:
-        parallel = True
+    def _lagrangian_method(self, u, v, lcs_type: str, lcs_time_len=4, find_departure=False) -> xr.DataArray:
+        parallel = self.parallel
         time_dir = 'backward'
         u = get_seq_mask(u, 'time', lcs_time_len)
         v = get_seq_mask(v, 'time', lcs_time_len)
@@ -150,34 +152,53 @@ class Classifier:
             input_arrays.append(group)
 
         lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='time', shearless=shearless)
-        array_list = []
-        if parallel:
-            with concurrent.futures.ProcessPoolExecutor(max_workers=10) as executor:
-                for i, resulting_array in enumerate(executor.map(lcs, input_arrays)):
-                    array_list.append(resulting_array)
-                    sys.stderr.write('\rdone {0:%}'.format(i/len(input_arrays)))
+
+        if find_departure:
+            x_list = []
+            y_list = []
+            if parallel:
+                raise Exception("Parallel not implemented")
+                pass
+            #    with concurrent.futures.ProcessPoolExecutor(max_workers=10) as executor:
+            #       for i, resulting_array in enumerate(executor.map(lcs, input_arrays)):
+            #           u_list.append(resulting_array[0])
+            #           v_list.append(resulting_array[1])
+            #          sys.stderr.write('\rdone {0:%}'.format(i/len(input_arrays)))
+            else:
+                for i, input_array in enumerate(input_arrays):
+                    x_departure, y_departure = parcel_propagation(input_array.u, input_array.v, timestep)
+                    x_list.append(x_departure)
+                    y_list.append(y_departure)
+                    sys.stderr.write('\rdone {0:%}'.format(i / len(input_arrays)))
+                x_list = xr.concat(x_list, dim='time')
+                y_list = xr.concat(y_list, dim='time')
+                x_list.name = 'x_departure'
+                y_list.name = 'y_departure'
+                output = xr.merge([x_list, y_list])
         else:
-            for i, input_array in enumerate(input_arrays):
-                array_list.append(lcs(input_array, verbose=True))
-                sys.stderr.write('\rdone {0:%}'.format(i / len(input_arrays)))
+            array_list = []
+            if parallel:
+                with concurrent.futures.ProcessPoolExecutor(max_workers=10) as executor:
+                    for i, resulting_array in enumerate(executor.map(lcs, input_arrays)):
+                        array_list.append(resulting_array)
+                        sys.stderr.write('\rdone {0:%}'.format(i/len(input_arrays)))
+            else:
+                for i, input_array in enumerate(input_arrays):
+                    array_list.append(lcs(input_array, verbose=True))
+                    sys.stderr.write('\rdone {0:%}'.format(i / len(input_arrays)))
 
-        eigenvalues = xr.concat(array_list, dim='time')
+            output = xr.concat(array_list, dim='time')
 
-        # from xrviz.dashboard import Dashboard
-        # dashboard = Dashboard(eigenvalues)
-        #dashboard.show()
-        # u.time
-        #eigenvalues = xr.apply_ufunc(lambda x, y: lcs(u=x, v=y), u.groupby('time'), v.groupby('time'), dask='parallelized')
-        #eigenvalues = ds.groupby('time').apply(lcs)
-        return eigenvalues
 
+        return output
 
 
 
 if __name__ == '__main__':
 
     classifier = Classifier()
-
+    parallel = False
+    find_departure = True
     running_on = str(sys.argv[1])
     lcs_type = str(sys.argv[2])
     year = str(sys.argv[3])
@@ -200,6 +221,10 @@ if __name__ == '__main__':
     else:
         outpath = 'data/'
 
-    classified_array1 = classifier(config, method='lagrangian', lcs_type=lcs_type, lcs_time_len=lcs_time_len)
+    classified_array1 = classifier(config, method='lagrangian', lcs_type=lcs_type, lcs_time_len=lcs_time_len,
+                                   find_departure=True, parallel=parallel)
     print("*---- Saving file ----*")
-    classified_array1.to_netcdf(f'{outpath}SL_{lcs_type}_{year}_lcstimelen_{lcs_time_len}.nc')
+    if find_departure:
+        classified_array1.to_netcdf(f'{outpath}SL_{lcs_type}_{year}_departuretimelen_{lcs_time_len}.nc')
+    else:
+        classified_array1.to_netcdf(f'{outpath}SL_{lcs_type}_{year}_lcstimelen_{lcs_time_len}.nc')

@@ -6,6 +6,7 @@ import cartopy.crs as ccrs
 import meteomath
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+import matplotlib.gridspec as gridspec
 
 if __name__ == '__main__':
 
@@ -34,13 +35,14 @@ if __name__ == '__main__':
     v_full = meteomath.to_cartesian(v_full)
     print("*---- Calculating div ----*")
     conv_moist = -meteomath.divergence(u_full*tcwv_full, v_full*tcwv_full)*6*3600
-    conv = -meteomath.divergence(u_full, v_full)*6*3600
+    conv = -meteomath.divergence(u_full, v_full) * 6 * 3600 * 10 #10 is just an avg tcwv
 
     time = 0
-    array_full = array_full*tcwv_full
+    array_moist = array_full*tcwv_full
+    array_full = array_full*20
 
-    vmin = array_full.quantile(0.1)
-    vmax = array_full.quantile(0.95)
+    vmin = array_moist.quantile(0.1)
+    vmax = array_moist.quantile(0.95)
     vmin_div = conv.quantile(0.1)
     vmax_div = conv.quantile(0.95)
     vmin_pr = pr_full.quantile(0.1)
@@ -52,46 +54,69 @@ if __name__ == '__main__':
         u = u_full.sel(time=time)
         v = v_full.sel(time=time)
         array = array_full.sel(time=time, method='pad')
-        print(array)
+        array_m = array_moist.sel(time=time, method='pad')
+
         conv_array = conv.sel(time=time, method='pad')
         pr = pr_full.sel(time=time, method='pad')
 
         conv_moist_array = conv_moist.sel(time=time, method='pad')
 
         print(f'Plotting time {time}')
-        fig, axes = plt.subplots(nrows=2, ncols=2, figsize=[40, 40],
-                                 subplot_kw={'projection': ccrs.Orthographic(-40, -20)})
-        array.plot.contourf(levels=12, vmin=vmin, transform=ccrs.PlateCarree(), add_colorbar=False,
-                                        vmax=vmax, cmap='inferno', ax=axes[0, 0])
-        axes[0, 0].streamplot(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values,
-                           transform=ccrs.PlateCarree(),density=1)
-        axes[0, 0].coastlines(color='red')
-        axes[0, 0].set_title("FTLE * tcwv")
+        fig = plt.figure(figsize=(40, 11))
 
-        conv_array.plot.contourf(levels=12,vmin=vmin_div, transform=ccrs.PlateCarree(), add_colorbar=False,
-                                        vmax=vmax_div, cmap='inferno', ax=axes[0, 1])
-        axes[0, 1].streamplot(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values,
+        # Setup axes
+        gs = gridspec.GridSpec(2, 5, width_ratios=[1, 1, 1, 1, 0.08])
+        axs = {}
+        axs['FTLE Moist'] = fig.add_subplot(gs[:, :2], projection=ccrs.Orthographic(-40, -20))
+        axs['FTLE Dry'] = fig.add_subplot(gs[0, 2], projection=ccrs.Orthographic(-40, -20))
+        axs['Precip'] = fig.add_subplot(gs[1, 2], projection=ccrs.Orthographic(-40, -20))
+        axs['Conv of vert. scaled wind'] = fig.add_subplot(gs[0, 3], projection=ccrs.Orthographic(-40, -20))
+        axs['Conv of vert. int. wv flux'] = fig.add_subplot(gs[1, 3], projection=ccrs.Orthographic(-40, -20))
+        # Disable axis ticks
+        for ax in axs.values():
+            ax.tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
+
+        # Add titles
+        for name, ax in axs.items():
+            ax.set_title(name)
+
+        plot_ftle = array_m.plot.contourf(levels=12, vmin=vmin, transform=ccrs.PlateCarree(), add_colorbar=False, add_labels=False,
+                                        vmax=vmax, cmap='inferno', ax=axs['FTLE Moist'])
+        axs['FTLE Moist'].streamplot(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values,
                            transform=ccrs.PlateCarree(), density=1)
-        axes[0, 1].coastlines(color='red')
-        axes[0, 1].set_title("Conv. of the vert. scaled wind")
+        axs['FTLE Moist'].coastlines(color='red')
 
-        pr.plot.contourf(levels=12,vmin=vmin, transform=ccrs.PlateCarree(), add_colorbar=False,
-                                        vmax=vmax, cmap='inferno', ax=axes[1, 0])
-        axes[1, 0].streamplot(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values,
+        array.plot.contourf(levels=12, vmin=vmin, transform=ccrs.PlateCarree(), add_colorbar=False, add_labels=False,
+                                        vmax=vmax, cmap='inferno', ax=axs['FTLE Dry'])
+        axs['FTLE Dry'].streamplot(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values,
                            transform=ccrs.PlateCarree(), density=1)
-        axes[1, 0].coastlines(color='red')
-        axes[1, 0].set_title("6 hourly precipitation")
+        axs['FTLE Dry'].coastlines(color='red')
 
-        im = conv_moist_array.plot.contourf(levels=12,vmin=vmin, transform=ccrs.PlateCarree(), add_colorbar=False,
-                                        vmax=vmax, cmap='inferno', ax=axes[1, 1])
-        axes[1, 1].streamplot(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values,
+        conv_array.plot.contourf(levels=12, vmin=vmin_div, transform=ccrs.PlateCarree(), add_colorbar=False, add_labels=False,
+                                        vmax=vmax_div, cmap='inferno', ax=axs['Conv of vert. scaled wind'])
+        axs['Conv of vert. scaled wind'].streamplot(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values,
                            transform=ccrs.PlateCarree(), density=1)
-        axes[1, 1].coastlines(color='red')
-        axes[1, 1].set_title("Conv. of the vert. integ. wv flux")
+        axs['Conv of vert. scaled wind'].coastlines(color='red')
 
-        cbar_ax = fig.add_axes([0.95, 0.15, 0.02, 0.7], projection=ccrs.PlateCarree())
-        fig.colorbar(im, cax=cbar_ax)
-        fig.tight_layout()
+        pr.plot.contourf(levels=12,vmin=vmin, transform=ccrs.PlateCarree(), add_colorbar=False,add_labels=False,
+                                        vmax=vmax, cmap='inferno', ax=axs['Precip'])
+        axs['Precip'].streamplot(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values,
+                           transform=ccrs.PlateCarree(), density=1)
+        axs['Precip'].coastlines(color='red')
+
+        conv_moist_array.plot.contourf(levels=12, vmin=vmin, transform=ccrs.PlateCarree(), add_colorbar=False,add_labels=False,
+                                        vmax=vmax, cmap='inferno', ax=axs['Conv of vert. int. wv flux'])
+        axs['Conv of vert. int. wv flux'].streamplot(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values,
+                           transform=ccrs.PlateCarree(), density=1)
+        axs['Conv of vert. int. wv flux'].coastlines(color='red')
+        # Colour bars
+        cbar_gs = gridspec.GridSpecFromSubplotSpec(1, 1, subplot_spec=gs[:, 4], wspace=2.5)
+        cax = fig.add_subplot(cbar_gs[0])
+        plt.colorbar(plot_ftle, cax)
+
+        #cbar_ax = fig.add_axes([0.95, 0.15, 0.02, 0.7], projection=ccrs.PlateCarree())
+        #fig.colorbar(im, cax=cbar_ax)
+        #fig.tight_layout()
         plt.savefig('tempfigs/comparison/{:02d}.png'.format(i))
         plt.close()
         i += 1
