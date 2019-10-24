@@ -4,18 +4,34 @@ from warnings import warn
 import numpy as np
 
 
-domains = dict(
-    AITCZ=dict(latitude=slice(-5, 15), longitude=slice(-50, -13)),
-    SACZ=dict(latitude=slice(-40,-5), longitude=slice(-62,-20))
-    )
+def createDomains(region, reverseLat=False):
+
+    if region == "SACZ":
+        domain = dict(latitude=[-40, -5], longitude=[-62, -20])
+    elif region == "AITCZ":
+        domain = dict(latitude=[-5, 15], longitude=[-45, -1])
+    else:
+        raise ValueError(f'Region {region} not supported')
+
+    if reverseLat:
+        domain = dict(latitude=slice(domain['latitude'][1], domain['latitude'][0]),
+                      longitude=slice(domain['longitude'][0], domain['longitude'][1]))
+
+    else:
+        domain = dict(latitude=slice(domain['latitude'][0], domain['latitude'][1]),
+                      longitude=slice(domain['longitude'][0], domain['longitude'][1]))
+
+    return domain
 
 
 def read_nc_files(region=None,
                   basepath="/group_workspaces/jasmin4/upscale/gmpp/convzones/",
                   filename="SL_repelling_{year}_lcstimelen_1.nc",
-                  year_range=range(2000, 2008)):
+                  year_range=range(2000, 2008), transformLon=False, lonName="longitude", reverseLat=False):
     """
 
+    :param transformLon:
+    :param lonName:
     :param region:
     :param basepath:
     :param filename:
@@ -30,9 +46,11 @@ def read_nc_files(region=None,
         year = str(year)
         try:
             array = xr.open_dataarray(basepath + filename.format(year=year))
+            if transformLon:
+                array.coords[lonName].values = (array.coords[lonName].values + 180) % 360 - 180
 
             if not isinstance(region, type(None)):
-                array = array.sel(domains[region])
+                array = array.sel(createDomains(region, reverseLat))
 
             file_list.append(array)
         except:
@@ -93,5 +111,5 @@ def xy_to_latlon(x, y, earth_r=6371000):
     Inverse function of meteomath.to_cartesian
     """
     longitude = x * 180 / (np.pi * earth_r)
-    latitude = np.arcsin(y / earth_r) * 180/np.pi
+    latitude = np.arcsin(y / earth_r) * 180 / np.pi
     return latitude, longitude

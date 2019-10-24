@@ -30,11 +30,7 @@ class Classifier:
     """
 
     def __init__(self):
-        '''
 
-        :param config:  config dict
-        :param method: classification method. options are: Q
-        '''
         pass
 
     def __call__(self, config: dict, method: str, lcs_type: Optional[str] = None, lcs_time_len: Optional[int] = 4,
@@ -46,6 +42,8 @@ class Classifier:
         print(f"*---- Calling classifier with method {method} ----*")
         self.method = method
         self.config = config
+        print("Apply classifier in the following domain")
+        print(config['array_slice'])
         self.parallel = parallel
 
         u, v = self._read_data
@@ -84,6 +82,7 @@ class Classifier:
         u = u.sel(self.config['array_slice'])
         v = v.sel(self.config['array_slice'])
         tcwv = tcwv.sel(self.config['array_slice'])
+        print(tcwv)
         # tcwv = tcwv.where(tcwv > 10, 10)
 
 
@@ -207,6 +206,7 @@ if __name__ == '__main__':
     #lcs_type = 'repelling'
     #year = 2000
     config['array_slice']['time'] = slice(f'{year}-01-01T00:00:00', f'{year}-12-31T18:00:00')
+    ### TODO WARNING!! limited times for profiling
     config['u_filename'] = f'viwve_ERA5_6hr_{year}010100-{year}123118.nc'
     config['v_filename'] = f'viwvn_ERA5_6hr_{year}010100-{year}123118.nc'
     config['tcwv_filename'] = f'tcwv_ERA5_6hr_{year}010100-{year}123118.nc'

@@ -222,8 +222,8 @@ def parcel_propagation(u, v, timestep, propdim="time", verbose=True):
     """
     Method to propagate the parcel given u and v
 
-    :param propdim:
-    :param timestep:
+    :param propdim: str, dimension name for time
+    :param timestep: double, timestep in seconds
     :param u: xr.DataArray zonal wind
     :param v: xr.DataArray meridional wind
     :return: tuple of xr.DataArrays containing the final positions of the trajectories
