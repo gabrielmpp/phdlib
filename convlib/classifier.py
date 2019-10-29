@@ -6,7 +6,7 @@ import sys
 from typing import Optional
 import numpy as np
 import concurrent.futures
-from convlib.xr_tools import get_seq_mask
+from convlib.xr_tools import get_seq_mask, get_xr_seq
 
 
 config = {
@@ -70,7 +70,6 @@ class Classifier:
         :return: tuple of xarray.dataarray
         """
         print("*---- Reading input data ----*")
-        ########### TODO WARNING SELECTING LIMITED NUMB OF DAYS
         u = xr.open_dataarray(self.config['data_basepath'] + self.config['u_filename'])
         v = xr.open_dataarray(self.config['data_basepath'] + self.config['v_filename'])
         tcwv = xr.open_dataarray(self.config['data_basepath'] + self.config['tcwv_filename'])
@@ -82,8 +81,6 @@ class Classifier:
         u = u.sel(self.config['array_slice'])
         v = v.sel(self.config['array_slice'])
         tcwv = tcwv.sel(self.config['array_slice'])
-        print(tcwv)
-        # tcwv = tcwv.where(tcwv > 10, 10)
 
 
         assert pd.infer_freq(u.time.values) == pd.infer_freq(v.time.values), "u and v should have equal time frequencies"
@@ -127,8 +124,16 @@ class Classifier:
     def _lagrangian_method(self, u, v, lcs_type: str, lcs_time_len=4, find_departure=False) -> xr.DataArray:
         parallel = self.parallel
         time_dir = 'backward'
-        u = get_seq_mask(u, 'time', lcs_time_len)
-        v = get_seq_mask(v, 'time', lcs_time_len)
+        u = get_xr_seq(u, 'time', [x for x in range(lcs_time_len)])
+        u = u.dropna(dim='time',how='any')
+        v = get_xr_seq(v, 'time', [x for x in range(lcs_time_len)])
+        v = v.dropna(dim='time',how='any')
+        print(u)
+        #####
+        ####
+        #####
+        # get seq mask does not seem to be working nicely
+        #v = get_seq_mask(v, 'time', lcs_time_len)
         shearless = False
 
 
@@ -145,13 +150,13 @@ class Classifier:
         u.name = 'u'
         v.name = 'v'
         ds = xr.merge([u, v])
-        ds_groups = list(ds.groupby('seq'))
+        ds_groups = list(ds.groupby('time'))
         input_arrays = []
         for label, group in ds_groups: # have to do that because bloody groupby returns the labels
             input_arrays.append(group)
 
-        lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='time', shearless=shearless)
-
+        lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='seq', shearless=shearless)
+        print(input_arrays[0])
         if find_departure:
             x_list = []
             y_list = []
@@ -186,8 +191,7 @@ class Classifier:
                     array_list.append(lcs(input_array, verbose=True))
                     sys.stderr.write('\rdone {0:%}'.format(i / len(input_arrays)))
 
-            output = xr.concat(array_list, dim='time')
-
+            output = xr.concat(array_list, dim='seq')
 
         return output
 
@@ -197,16 +201,15 @@ if __name__ == '__main__':
 
     classifier = Classifier()
     parallel = False
-    find_departure = True
+    find_departure = False
     running_on = str(sys.argv[1])
     lcs_type = str(sys.argv[2])
     year = str(sys.argv[3])
-    lcs_time_len = 1  # * 6 hours intervals
+    lcs_time_len = 4  # * 6 hours intervals
     #running_on = ''
     #lcs_type = 'repelling'
     #year = 2000
     config['array_slice']['time'] = slice(f'{year}-01-01T00:00:00', f'{year}-12-31T18:00:00')
-    ### TODO WARNING!! limited times for profiling
     config['u_filename'] = f'viwve_ERA5_6hr_{year}010100-{year}123118.nc'
     config['v_filename'] = f'viwvn_ERA5_6hr_{year}010100-{year}123118.nc'
     config['tcwv_filename'] = f'tcwv_ERA5_6hr_{year}010100-{year}123118.nc'

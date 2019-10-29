@@ -2,12 +2,10 @@ import xarray as xr
 import numpy as np
 import scipy.ndimage.filters as filters
 import scipy.ndimage as ndimage
-from meteomath import to_cartesian
 from typing import Tuple
 from meteomath import interpolate_c_stagger
-from convlib.xr_tools import xy_to_latlon
+from convlib.xr_tools import xy_to_latlon, to_cartesian
 from sklearn.preprocessing import MinMaxScaler
-
 
 # import matplotlib.pyplot as plt
 
@@ -26,21 +24,21 @@ def double_gyre(x, y, t, freq=0.1, epsilon=0.25, nt=None):
     :return: tuple of numpy arrays with zonal and meridional components
     """
 
-    omega = freq*2*np.pi
+    omega = freq * 2 * np.pi
     try_to_make_full_turn = True
 
     if try_to_make_full_turn:
-        A = 2*np.pi*0.5*(x.shape[0]+x.shape[1])/nt
+        A = 2 * np.pi * 0.5 * (x.shape[0] + x.shape[1]) / nt
     else:
         A = 0.1
 
     print(A)
-    a = epsilon*np.sin(omega * t)
-    b = 1 - 2*epsilon*np.sin(omega*t)
-    f = a*x**2 + b*x
-    u = -np.pi * A * np.sin(np.pi*f) * np.cos(np.pi*y)
-    dfdx = 2*a*x + b
-    v = np.pi * A * np.cos(np.pi*f)*np.sin(np.pi*y) * dfdx
+    a = epsilon * np.sin(omega * t)
+    b = 1 - 2 * epsilon * np.sin(omega * t)
+    f = a * x ** 2 + b * x
+    u = -np.pi * A * np.sin(np.pi * f) * np.cos(np.pi * y)
+    dfdx = 2 * a * x + b
+    v = np.pi * A * np.cos(np.pi * f) * np.sin(np.pi * y) * dfdx
     return u, v
 
 
@@ -60,7 +58,8 @@ class LCS:
 
         self.dataarray_template = dataarray_template
 
-    def __call__(self, ds: xr.Dataset = None, u: xr.DataArray = None, v: xr.DataArray = None, verbose=False) -> xr.DataArray:
+    def __call__(self, ds: xr.Dataset = None, u: xr.DataArray = None, v: xr.DataArray = None,
+                 verbose=False) -> xr.DataArray:
 
         """
         :param ds: xarray dataset containing u and v as variables
@@ -107,7 +106,6 @@ class LCS:
         eigenvalues = eigenvalues.isel(derivatives=0).drop('derivatives')
         eigenvalues = eigenvalues.expand_dims({self.timedim: [u[self.timedim].values[0]]})
 
-
         return eigenvalues
 
     def _compute_eigenvalues(self, def_tensor: np.array) -> np.array:
@@ -148,8 +146,8 @@ class LCS:
         dydy = dydy.transpose('latitude', 'longitude').drop('x').drop('y')
         dydx = dydx.transpose('latitude', 'longitude').drop('y')
         if self.shearless:
-            dydx = dydx*0
-            dxdy = dxdy*0
+            dydx = dydx * 0
+            dxdy = dxdy * 0
         dxdx.name = 'dxdx'
         dxdy.name = 'dxdy'
         dydy.name = 'dydy'
@@ -236,7 +234,7 @@ def parcel_propagation(u, v, timestep, propdim="time", verbose=True):
 
     # initializing and integrating
 
-    positions_x, positions_y = np.meshgrid(u.x.values,  u.y.values)
+    positions_x, positions_y = np.meshgrid(u.x.values, u.y.values)
 
     initial_pos = xr.DataArray()
 
@@ -246,9 +244,11 @@ def parcel_propagation(u, v, timestep, propdim="time", verbose=True):
         subtimes_len = len(subtimes)
 
         for subtime in subtimes:
+            verboseprint(f'Propagating subtime {subtime}')
+
             subtimestep = timestep / subtimes_len
 
-            lat, lon = xy_to_latlon(y=positions_y, x=positions_x)  #TODO There is a problem here when lcstimelen > 1
+            lat, lon = xy_to_latlon(y=positions_y, x=positions_x)  # TODO There is a problem here when lcstimelen > 1
             lat = lat[:, 0]  # lat is constant along cols
             lon = lon[0, :]  # lon is constant along rows
 
@@ -256,21 +256,21 @@ def parcel_propagation(u, v, timestep, propdim="time", verbose=True):
 
             y_buffer = positions_y + \
                        subtimestep * v.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
-                                                                longitude=lon.tolist(),
-                                                                kwargs={'fill_value': None}).values
+                                                                   longitude=lon.tolist(),
+                                                                   kwargs={'fill_value': None}).values
 
             x_buffer = positions_x + \
                        subtimestep * u.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
-                                                                longitude=lon.tolist(),
-                                                                kwargs={'fill_value': None}).values
+                                                                   longitude=lon.tolist(),
+                                                                   kwargs={'fill_value': None}).values
             # ---- Updating positions ---- #
             positions_x = x_buffer
             positions_y = y_buffer
 
     positions_x = xr.DataArray(positions_x, dims=['latitude', 'longitude'],
-                               coords=[u.latitude.values,u.longitude.values])
+                               coords=[u.latitude.values, u.longitude.values])
     positions_y = xr.DataArray(positions_y, dims=['latitude', 'longitude'],
-                               coords=[u.latitude.values,u.longitude.values])
+                               coords=[u.latitude.values, u.longitude.values])
     positions_x['x'] = (('longitude'), u.x.values)
     positions_x['y'] = (('latitude'), u.y.values)
     positions_y['x'] = (('longitude'), u.x.values)
@@ -308,22 +308,22 @@ if __name__ == '__main__':
     backwards = True
     shearless = False
     latlon_array = xr.DataArray(np.zeros([ny, nx, nt]), dims=['latitude', 'longitude', 't'],
-                         coords={'longitude': np.linspace(-80, -80+nx*dx, nx),
-                                 'latitude': np.linspace(-60, -60+nx*dx, ny), 't': np.linspace(0, 1, nt)})
+                                coords={'longitude': np.linspace(-80, -80 + nx * dx, nx),
+                                        'latitude': np.linspace(-60, -60 + nx * dx, ny), 't': np.linspace(0, 1, nt)})
     latlon_array.isel(t=0).plot()
     plt.show()
     cartesian_array = to_cartesian(latlon_array)
-    scalerx = MinMaxScaler(feature_range=(0,2))
-    scalery = MinMaxScaler(feature_range=(0,1))
+    scalerx = MinMaxScaler(feature_range=(0, 2))
+    scalery = MinMaxScaler(feature_range=(0, 1))
 
-    scaled_x = scalerx.fit_transform(cartesian_array.x.values.reshape(-1,1))
-    scaled_y = scalery.fit_transform(cartesian_array.y.values.reshape(-1,1))
+    scaled_x = scalerx.fit_transform(cartesian_array.x.values.reshape(-1, 1))
+    scaled_y = scalery.fit_transform(cartesian_array.y.values.reshape(-1, 1))
 
     grid = np.meshgrid(scaled_x, scaled_y)
     u = []
     v = []
     for t in cartesian_array.t.values:
-        v_temp, u_temp = double_gyre(grid[1], grid[0], t, epsilon, nt=cartesian_array.t.values.shape[0                                                                                              ])
+        v_temp, u_temp = double_gyre(grid[1], grid[0], t, epsilon, nt=cartesian_array.t.values.shape[0])
         u.append(u_temp)
         v.append(v_temp)
 
@@ -332,12 +332,10 @@ if __name__ == '__main__':
 
     u = cartesian_array.copy(data=u)
     v = cartesian_array.copy(data=v)
-    mag = (u**2 + v**2)**0.5
+    mag = (u ** 2 + v ** 2) ** 0.5
     mag.name = 'magnitude'
 
-    #for time in range(nt):
-
-
+    # for time in range(nt):
 
     #    plt.streamplot(y=u.latitude.values,x=u.longitude.values, u=u.isel(t=time).values,
     #                       v=v.isel(t=time).values, color=mag.isel(t=time).values)
@@ -351,17 +349,16 @@ if __name__ == '__main__':
 
     eigenvalues = lcs(u=u, v=v)
 
-    #eigenvalues.isel(t=0).plot()
-    #plt.show()
-
+    # eigenvalues.isel(t=0).plot()
+    # plt.show()
 
     for time in range(nt):
-
         eigenvalues.isel(t=0).plot()
         plt.streamplot(x=u.longitude.values, y=u.latitude.values, u=u.isel(t=time).values,
                        v=v.isel(t=time).values, color=mag.isel(t=time).values)
         plt.show()
     from xrviz.dashboard import Dashboard
+
     dashboard = Dashboard(u)
     dashboard.show()
     plt.streamplot(x=u.longitude.values, y=u.latitude.values, u=u.isel(t=time).values,

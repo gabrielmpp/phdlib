@@ -2,14 +2,18 @@ import xarray as xr
 from typing import List
 from warnings import warn
 import numpy as np
-
+import traceback
+import cmath
 
 def createDomains(region, reverseLat=False):
-
     if region == "SACZ":
         domain = dict(latitude=[-40, -5], longitude=[-62, -20])
+    if region == "SACZ_small":
+        domain = dict(latitude=[-30, -20], longitude=[-50, -35])
     elif region == "AITCZ":
         domain = dict(latitude=[-5, 15], longitude=[-45, -1])
+    elif region == "NEBR":
+        domain = dict(latitude=[-15, 5], longitude=[-45, -20])
     else:
         raise ValueError(f'Region {region} not supported')
 
@@ -41,21 +45,35 @@ def read_nc_files(region=None,
     print("*---- Starting reading data ----*")
     years = year_range
     file_list = []
-    for year in years:
+
+    def transform(x):
+        if transformLon:
+            x.coords[lonName].values = \
+                (x.coords[lonName].values + 180) % 360 - 180
+        if not isinstance(region, type(None)):
+            x = x.sel(createDomains(region, reverseLat))
+        return x
+
+    for i, year in enumerate(years):
         print(f'Reading year {year}')
+        filename_formatted = basepath + filename.format(year=year)
+        print(filename_formatted)
         year = str(year)
-        try:
-            array = xr.open_dataarray(basepath + filename.format(year=year))
-            if transformLon:
-                array.coords[lonName].values = (array.coords[lonName].values + 180) % 360 - 180
+        array = None
+        fs = (xr.open_dataarray, xr.open_dataset)
+        for f in fs:
+            try:
+                array = f(filename_formatted)
+            except ValueError:
+                print('Could not open file using {}'.format(f.__name__))
+            else:
+                break
 
-            if not isinstance(region, type(None)):
-                array = array.sel(createDomains(region, reverseLat))
-
-            file_list.append(array)
-        except:
+        if isinstance(array, (xr.DataArray, xr.Dataset)):
+            file_list.append(transform(array))
+        else:
             print(f'Year {year} unavailable')
-
+    print(file_list)
     full_array = xr.concat(file_list, dim='time')
     print('*---- Finished reading data ----*')
     return full_array
@@ -106,6 +124,21 @@ def get_seq_mask(ds: xr.DataArray, seq_dim: str, seq_len: int):
     return ds
 
 
+def to_cartesian(array, lon_name='longitude', lat_name='latitude', earth_r=6371000):
+    """
+    Method to include cartesian coordinates in a lat lon xr. DataArray
+
+    :param array: input xr.DataArray
+    :param lon_name: name of the longitude dimension in the array
+    :param lat_name: name of the latitude dimension in the array
+    :param earth_r: earth radius
+    :return: xr.DataArray with x and y cartesian coordinates
+    """
+    array['x'] = array[lon_name]*np.pi*earth_r/180
+    array['y'] = xr.apply_ufunc(lambda x: np.sin(np.pi*x/180)*earth_r, array[lat_name])
+    return array
+
+
 def xy_to_latlon(x, y, earth_r=6371000):
     """
     Inverse function of meteomath.to_cartesian
@@ -113,3 +146,20 @@ def xy_to_latlon(x, y, earth_r=6371000):
     longitude = x * 180 / (np.pi * earth_r)
     latitude = np.arcsin(y / earth_r) * 180 / np.pi
     return latitude, longitude
+
+def get_xr_seq(ds, commun_sample_dim, idx_seq):
+    """
+    Internal function that create the sequence dimension
+    :param ds:
+    :param commun_sample_dim:
+    :param idx_seq:
+    :return:
+    """
+    dss = []
+    for idx in idx_seq:
+        dss.append(ds.shift({commun_sample_dim: -idx}))
+
+    dss = xr.concat(dss, dim='seq')
+    dss = dss.assign_coords(seq=idx_seq)
+
+    return dss
