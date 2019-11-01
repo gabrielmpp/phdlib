@@ -47,8 +47,8 @@ class Classifier:
         self.parallel = parallel
 
         u, v = self._read_data
-        u = to_cartesian(u)
-        v = to_cartesian(v)
+        # u = to_cartesian(u)
+        # v = to_cartesian(v)
         print("*---- Applying classification method ----*")
 
         if self.method == 'Q':
@@ -170,7 +170,7 @@ class Classifier:
             #          sys.stderr.write('\rdone {0:%}'.format(i/len(input_arrays)))
             else:
                 for i, input_array in enumerate(input_arrays):
-                    x_departure, y_departure = parcel_propagation(input_array.u, input_array.v, timestep)
+                    x_departure, y_departure = parcel_propagation(input_array.u, input_array.v, timestep, propdim='seq')
                     x_list.append(x_departure)
                     y_list.append(y_departure)
                     sys.stderr.write('\rdone {0:%}'.format(i / len(input_arrays)))
@@ -193,6 +193,11 @@ class Classifier:
 
             output = xr.concat(array_list, dim='seq')
 
+            # idx = - lcs_time_len + 1 if lcs_time_len > 1 else None
+
+            output.seq.values = u.time.values
+            output = output.rename({'seq': 'time'})
+
         return output
 
 
@@ -200,12 +205,12 @@ class Classifier:
 if __name__ == '__main__':
 
     classifier = Classifier()
-    parallel = False
+    parallel = True
     find_departure = False
     running_on = str(sys.argv[1])
     lcs_type = str(sys.argv[2])
     year = str(sys.argv[3])
-    lcs_time_len = 4  # * 6 hours intervals
+    lcs_time_len = 1  # * 6 hours intervals
     #running_on = ''
     #lcs_type = 'repelling'
     #year = 2000
@@ -230,4 +235,4 @@ if __name__ == '__main__':
     if find_departure:
         classified_array1.to_netcdf(f'{outpath}SL_{lcs_type}_{year}_departuretimelen_{lcs_time_len}.nc')
     else:
-        classified_array1.to_netcdf(f'{outpath}SL_{lcs_type}_{year}_lcstimelen_{lcs_time_len}.nc')
+        classified_array1.to_netcdf(f'{outpath}SL_{lcs_type}_{year}_lcstimelen_{lcs_time_len}_v2.nc')

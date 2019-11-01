@@ -11,28 +11,28 @@ from convlib.xr_tools import xy_to_latlon
 if __name__ == '__main__':
 
     print("*---- Reading arrays ----*")
-    u_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/viwve_ERA5_6hr_2000010100-2000123118.nc').isel(time=slice(None, 100))
-    v_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/viwvn_ERA5_6hr_2000010100-2000123118.nc').isel(time=slice(None, 100))
-    pr_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/pr_ERA5_6hr_2000010100-2000123118.nc').isel(time=slice(None, 100))
+    u_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/viwve_ERA5_6hr_1990010100-1990123118.nc').isel(time=slice(None, 100))
+    v_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/viwvn_ERA5_6hr_1990010100-1990123118.nc').isel(time=slice(None, 100))
+    pr_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/pr_ERA5_6hr_1990010100-1990123118.nc').isel(time=slice(None, 100))
 
-    tcwv_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/tcwv_ERA5_6hr_2000010100-2000123118.nc').isel(time=slice(None, 100))
-    array_full = xr.open_dataarray('/group_workspaces/jasmin4/upscale/gmpp/convzones/SL_repelling_2000_lcstimelen_1.nc').isel(time=slice(None, 100))
-    departures = xr.open_dataset('/group_workspaces/jasmin4/upscale/gmpp/convzones/SL_repelling_2000_departuretimelen_1.nc').isel(time=slice(None, 100))
-    print(departures)
+    tcwv_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/tcwv_ERA5_6hr_1990010100-1990123118.nc').isel(time=slice(None, 100))
+    array_full = xr.open_dataarray('/group_workspaces/jasmin4/upscale/gmpp/convzones/SL_repelling_1990_lcstimelen_1_v2.nc').isel(time=slice(None, 100))
+    #   array_full.time.values = tcwv_full.time.values #TODO do it properly
+    #departures = xr.open_dataset('/group_workspaces/jasmin4/upscale/gmpp/convzones/SL_repelling_1990_departuretimelen_4_v2.nc').isel(time=slice(None, 100))
     array_full = xr.apply_ufunc(lambda x: np.log(x), array_full ** 0.5)
     print("*---- Transforming arrays ----*")
     pr_full.coords['longitude'].values = (pr_full.coords['longitude'].values + 180) % 360 - 180
-    departures.coords['longitude'].values = (departures.coords['longitude'].values + 180) % 360 - 180
+    #departures.coords['longitude'].values = (departures.coords['longitude'].values + 180) % 360 - 180
 
     u_full.coords['longitude'].values = (u_full.coords['longitude'].values + 180) % 360 - 180
     v_full.coords['longitude'].values = (v_full.coords['longitude'].values + 180) % 360 - 180
     tcwv_full.coords['longitude'].values = (tcwv_full.coords['longitude'].values + 180) % 360 - 180
     u_full = u_full.sel(latitude=array_full.latitude, longitude=array_full.longitude)
-    departures = departures.sel(latitude=array_full.latitude, longitude=array_full.longitude)
+    #departures = departures.sel(latitude=array_full.latitude, longitude=array_full.longitude)
 
     v_full = v_full.sel(latitude=array_full.latitude, longitude=array_full.longitude)
     pr_full = pr_full.sel(latitude=array_full.latitude, longitude=array_full.longitude) * 6 * 3600
-    dep_x, dep_y = departures.x_departure, departures.y_departure
+    #dep_x, dep_y = departures.x_departure, departures.y_departure
 
     u_full = u_full/tcwv_full
     v_full = v_full/tcwv_full
@@ -53,14 +53,13 @@ if __name__ == '__main__':
     vmax_div = conv.quantile(0.95)
     vmin_pr = pr_full.quantile(0.1)
     vmax_pr = pr_full.quantile(0.95)
-    dep = xr.full_like(dep_x, 1)
-    print(dep)
-    dep_x.coords['time'] = array_moist.coords['time']
-    dep_y.coords['time'] = array_moist.coords['time']
+    #dep = xr.full_like(dep_x, 1)
+    #dep_x.coords['time'] = array_moist.coords['time']
+    #dep_y.coords['time'] = array_moist.coords['time']
 
-    dep_lat, dep_lon = xy_to_latlon(dep_x.where(array_moist > 3, np.nan).values, dep_y.where(array_moist > 10, np.nan).values)
-    dep_lat = dep_y.copy(data=dep_lat)
-    dep_lon = dep_x.copy(data=dep_lon)
+    #dep_lat, dep_lon = xy_to_latlon(dep_x.where(array_moist > 3, np.nan).values, dep_y.where(array_moist > 10, np.nan).values)
+    #dep_lat = dep_y.copy(data=dep_lat)
+    #dep_lon = dep_x.copy(data=dep_lon)
 
 
     i = 0
@@ -73,8 +72,8 @@ if __name__ == '__main__':
 
         conv_array = conv.sel(time=time, method='pad')
         pr = pr_full.sel(time=time, method='pad')
-        dep_lat_array = dep_lat.sel(time=time, method='pad')
-        dep_lon_array = dep_lon.sel(time=time, method='pad')
+        #dep_lat_array = dep_lat.sel(time=time, method='pad')
+        #dep_lon_array = dep_lon.sel(time=time, method='pad')
 
         conv_moist_array = conv_moist.sel(time=time, method='pad')
 
@@ -101,7 +100,7 @@ if __name__ == '__main__':
                                         vmax=vmax, cmap='inferno', ax=axs['FTLE Moist'])
         axs['FTLE Moist'].streamplot(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values,
                            transform=ccrs.PlateCarree(), density=1)
-        axs['FTLE Moist'].scatter(x=dep_lon_array.values, y=dep_lat_array.values, transform=ccrs.PlateCarree(), alpha=0.5,s=100)
+        #axs['FTLE Moist'].scatter(x=dep_lon_array.values, y=dep_lat_array.values, transform=ccrs.PlateCarree(), alpha=0.5,s=100)
 
         axs['FTLE Moist'].coastlines(color='red')
 
@@ -132,7 +131,6 @@ if __name__ == '__main__':
         cbar_gs = gridspec.GridSpecFromSubplotSpec(1, 1, subplot_spec=gs[:, 4], wspace=2.5)
         cax = fig.add_subplot(cbar_gs[0])
         plt.colorbar(plot_ftle, cax)
-        plt.close()
 
         #cbar_ax = fig.add_axes([0.95, 0.15, 0.02, 0.7], projection=ccrs.PlateCarree())
         #fig.colorbar(im, cax=cbar_ax)

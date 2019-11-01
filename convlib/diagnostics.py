@@ -126,17 +126,17 @@ def filter(region, years):
                                      transformed.encoded_dims.values])
 
 
-def find_seabreezes(region, start_year, final_year):
+def find_seabreezes(region, start_year, final_year, lcstimelen):
     years = range(start_year, final_year)
 
     # ---- File reading and formatting ---- #
     departures = read_nc_files(region=region,
                                basepath='/group_workspaces/jasmin4/upscale/gmpp/convzones/',
-                               filename='SL_repelling_{year}_departuretimelen_1.nc',
+                               filename='SL_repelling_{year}_departuretimelen' + f'_{lcstimelen}_v2.nc',
                                year_range=years, reverseLat=True).isel(time=slice(None, None))
     ftle_array = read_nc_files(region=region,
                                basepath='/group_workspaces/jasmin4/upscale/gmpp/convzones/',
-                               filename='SL_repelling_{year}_lcstimelen_1.nc',
+                               filename='SL_repelling_{year}_lcstimelen' + f'_{lcstimelen}_v2.nc',
                                year_range=years).isel(time=slice(None, None))
     landSea_mask = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/landSea_mask.nc')
     landSea_mask = landSea_mask.squeeze('time').drop('time')
@@ -156,10 +156,9 @@ def find_seabreezes(region, start_year, final_year):
 
     dep_x, dep_y = departures.x_departure, departures.y_departure
 
-    dep_lat, dep_lon = xy_to_latlon(dep_x.where(ftle_array > threshold, np.nan).values,
-                                    dep_y.where(ftle_array > threshold, np.nan).values)
-    dep_lat = dep_y.copy(data=dep_lat)
-    dep_lon = dep_x.copy(data=dep_lon)
+    dep_lat, dep_lon = dep_y.where(ftle_array > threshold, np.nan), dep_x.where(ftle_array > threshold, np.nan)
+    #dep_lat = dep_y.copy(data=dep_lat)
+    #dep_lon = dep_x.copy(data=dep_lon)
     dep_mask = xr.full_like(dep_x, 1)
 
     # Selecting only continental points (sort of)
@@ -191,25 +190,26 @@ def find_seabreezes(region, start_year, final_year):
 
 
     seabreeze = dep_lat.groupby('time').apply(dummy)
-    seabreeze.to_netcdf(f'/group_workspaces/jasmin4/upscale/gmpp/convzones/seabreeze_{start_year}_{final_year}_{region}.nc')
+    seabreeze.to_netcdf(f'/group_workspaces/jasmin4/upscale/gmpp/convzones/seabreeze_{start_year}_{final_year}_{region}_lcstimelen_{lcstimelen}.nc')
 
 if __name__ == '__main__':
     region = 'NEBR'
+    lcstimelen = 1
     vmin = 0
     vmax = 0.6
-    start_year, final_year = 2000, 2008
+    start_year, final_year = 2000, 2001
     years = range(start_year, final_year)
     seabreeze = xr.open_dataarray(f'/group_workspaces/jasmin4/upscale/gmpp/convzones/seabreeze_{start_year}_{final_year}_{region}.nc')
 
-    #seabreeze = find_seabreezes(region, start_year, final_year)
+    seabreeze = find_seabreezes(region, start_year, final_year, lcstimelen)
     pr_array = read_nc_files(region=region,
                              basepath='/gws/nopw/j04/primavera1/observations/ERA5/',
                              filename='pr_ERA5_6hr_{year}010100-{year}123118.nc',
                              year_range=years, transformLon=True, reverseLat=True)
     pr_array = pr_array.sortby('latitude') * 6 * 3600  # total mm in 6h
 
-
-    pr_array = pr_array.sel(latitude=seabreeze.latitude, longitude=seabreeze.longitude, method='nearest')
+    pr_array = pr_array.sel(latitude=seabreeze.latitude, longitude=seabreeze.longitude,
+                            time=seabreeze.time, method='nearest')
     masked_precip = pr_array.where(seabreeze == 1, 0)
     #
     # for time in seabreeze.time:
@@ -265,10 +265,10 @@ if __name__ == '__main__':
     cbar_gs = gridspec.GridSpecFromSubplotSpec(1, 1, subplot_spec=gs[:, 2], wspace=2.5)
     cax = fig.add_subplot(cbar_gs[0])
     plt.colorbar(plot, cax)
-    plt.savefig(f'tempfigs/seabreeze/seabreeze_{region}.png')
+    plt.savefig(f'tempfigs/seabreeze/seabreeze_{region}_lcstimelen_{lcstimelen}.png')
     plt.close()
 
-    total.stack(points=['latitude','longitude']).mean('points').plot()
+    total.stack(points=['latitude', 'longitude']).mean('points').plot()
     plt.savefig('tempfigs/seabreeze/ciclo_diurno.png')
 
 

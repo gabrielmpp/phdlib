@@ -46,6 +46,7 @@ class LCS:
     """
     Methods to compute LCS in 2D wind fields in xarrray dataarrays
     """
+    earth_r = 6371000
 
     def __init__(self, lcs_type: str, timestep: float = 1, dataarray_template=None, timedim='time',
                  shearless=False):
@@ -89,12 +90,12 @@ class LCS:
         assert set(u_dims) == set(v_dims), "u and v dims are different"
         assert set(u_dims) == {'latitude', 'longitude', timedim}, 'array dims should be latitude and longitude only'
 
-        if not (hasattr(u, "x") and hasattr(u, "y")):
-            verboseprint("Ascribing x and y coords do u")
-            u = to_cartesian(u)
-        if not (hasattr(v, "x") and hasattr(v, "y")):
-            verboseprint("Ascribing x and y coords do v")
-            v = to_cartesian(v)
+        # if not (hasattr(u, "x") and hasattr(u, "y")):
+        #     verboseprint("Ascribing x and y coords do u")
+        #     u = to_cartesian(u)
+        # if not (hasattr(v, "x") and hasattr(v, "y")):
+        #     verboseprint("Ascribing x and y coords do v")
+        #     v = to_cartesian(v)
 
         verboseprint("*---- Computing deformation tensor ----*")
         def_tensor = self._compute_deformation_tensor(u, v, timestep)
@@ -133,18 +134,18 @@ class LCS:
 
         x_departure, y_departure = parcel_propagation(u, v, timestep, propdim=self.timedim)
         # u, v, eigengrid = interpolate_c_stagger(u, v)
-        dx = x_departure.x.diff('longitude')
-        dy = y_departure.y.diff('latitude').values
+        conversion_dydx = xr.apply_ufunc(lambda x: np.cos(x*np.pi/180), y_departure.latitude)
+        conversion_dxdy = xr.apply_ufunc(lambda x: np.cos(x*np.pi/180), x_departure.latitude)
 
-        dxdx = x_departure.diff('longitude') / x_departure.x.diff('longitude')
-        dxdy = x_departure.diff('latitude') / x_departure.y.diff('latitude')
-        dydy = y_departure.diff('latitude') / y_departure.y.diff('latitude')
-        dydx = y_departure.diff('longitude') / y_departure.x.diff('longitude')
+        dxdx = x_departure.diff('longitude') / x_departure.longitude.diff('longitude')
+        dxdy = conversion_dxdy * x_departure.diff('latitude') / x_departure.latitude.diff('latitude')
+        dydy = y_departure.diff('latitude') / y_departure.latitude.diff('latitude')
+        dydx = y_departure.diff('longitude') / (y_departure.longitude.diff('longitude') * conversion_dydx)
 
         dxdx = dxdx.transpose('latitude', 'longitude')
-        dxdy = dxdy.transpose('latitude', 'longitude').drop('x').drop('y')
-        dydy = dydy.transpose('latitude', 'longitude').drop('x').drop('y')
-        dydx = dydx.transpose('latitude', 'longitude').drop('y')
+        dxdy = dxdy.transpose('latitude', 'longitude')
+        dydy = dydy.transpose('latitude', 'longitude')
+        dydx = dydx.transpose('latitude', 'longitude')
         if self.shearless:
             dydx = dydx * 0
             dxdy = dxdy * 0
@@ -227,14 +228,17 @@ def parcel_propagation(u, v, timestep, propdim="time", verbose=True):
     :return: tuple of xr.DataArrays containing the final positions of the trajectories
     """
     verboseprint = print if verbose else lambda *a, **k: None
-
+    earth_r = 6371000
+    conversion_y = 1 / earth_r  # converting m/s to rad/s
+    conversion_x = (earth_r ** (-1)) * xr.apply_ufunc(lambda x: np.cos(x * np.pi / 180), u.latitude) ** (-1)
+    conversion_x, _ = xr.broadcast(conversion_x, u.sel({propdim: 0}))
     times = u[propdim].values.tolist()
     if timestep < 0:
         times.reverse()  # inplace
 
     # initializing and integrating
 
-    positions_x, positions_y = np.meshgrid(u.x.values, u.y.values)
+    positions_x, positions_y = np.meshgrid(u.longitude.values, u.latitude.values)
 
     initial_pos = xr.DataArray()
 
@@ -248,33 +252,31 @@ def parcel_propagation(u, v, timestep, propdim="time", verbose=True):
 
             subtimestep = timestep / subtimes_len
 
-            lat, lon = xy_to_latlon(y=positions_y, x=positions_x)  # TODO There is a problem here when lcstimelen > 1
-            lat = lat[:, 0]  # lat is constant along cols
-            lon = lon[0, :]  # lon is constant along rows
+            # lat, lon = xy_to_latlon(y=positions_y, x=positions_x)  # TODO There is a problem here when lcstimelen > 1
+            lat = positions_y[:, 0]  # lat is constant along cols
+            lon = positions_x[0, :]  # lon is constant along rows
 
             # ---- propagating positions ---- #
 
             y_buffer = positions_y + \
-                       subtimestep * v.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
+                       subtimestep * conversion_y * \
+                       v.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
                                                                    longitude=lon.tolist(),
                                                                    kwargs={'fill_value': None}).values
 
             x_buffer = positions_x + \
-                       subtimestep * u.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
+                       subtimestep * conversion_x.values * \
+                       u.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
                                                                    longitude=lon.tolist(),
                                                                    kwargs={'fill_value': None}).values
             # ---- Updating positions ---- #
-            positions_x = x_buffer
-            positions_y = y_buffer
+            positions_x = x_buffer.copy()
+            positions_y = y_buffer.copy()
 
     positions_x = xr.DataArray(positions_x, dims=['latitude', 'longitude'],
                                coords=[u.latitude.values, u.longitude.values])
     positions_y = xr.DataArray(positions_y, dims=['latitude', 'longitude'],
                                coords=[u.latitude.values, u.longitude.values])
-    positions_x['x'] = (('longitude'), u.x.values)
-    positions_x['y'] = (('latitude'), u.y.values)
-    positions_y['x'] = (('longitude'), u.x.values)
-    positions_y['y'] = (('latitude'), u.y.values)
 
     return positions_x, positions_y
 

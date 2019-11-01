@@ -1,4 +1,7 @@
 import xarray as xr
+import matplotlib as mpl
+
+mpl.use('Agg')
 import matplotlib.pyplot as plt
 import cartopy.feature as cfeature
 import cartopy.crs as ccrs
@@ -25,23 +28,26 @@ def plot_local():
     array_at = xr.open_dataarray(filepath_at)
     array_re_momentum = xr.open_dataarray(filepath_re_momentum)
     array_at_momentum = xr.open_dataarray(filepath_at_momentum)
-    product = array_re**-1
+    product = array_re ** -1
 
-    array_at1 = xr.apply_ufunc(lambda x: np.log(x), (array_at_momentum*array_re_momentum) ** 0.5)
+    array_at1 = xr.apply_ufunc(lambda x: np.log(x), (array_at_momentum * array_re_momentum) ** 0.5)
 
-    array_at2 = xr.apply_ufunc(lambda x: np.log(x), (array_re**-1) ** 0.5)
-    array_at3 = xr.apply_ufunc(lambda x: np.log(x), (array_re_momentum**-1) ** 0.5)
+    array_at2 = xr.apply_ufunc(lambda x: np.log(x), (array_re ** -1) ** 0.5)
+    array_at3 = xr.apply_ufunc(lambda x: np.log(x), (array_re_momentum ** -1) ** 0.5)
 
+    ridges = xr.apply_ufunc(lambda x: canny(x, sigma=2, low_threshold=0.4, use_quantiles=True),
+                            array_at2.groupby('time'))
+    ridges_momentum = xr.apply_ufunc(lambda x: canny(x, sigma=2, low_threshold=0.4, use_quantiles=True),
+                                     array_at3.groupby('time'))
 
-    ridges = xr.apply_ufunc(lambda x: canny(x, sigma=2, low_threshold=0.4, use_quantiles=True), array_at2.groupby('time'))
-    ridges_momentum = xr.apply_ufunc(lambda x: canny(x, sigma=2, low_threshold=0.4, use_quantiles=True), array_at3.groupby('time'))
+    new_lon = np.linspace(array_at2.longitude[0].values, array_at2.longitude[-1].values,
+                          int(array_at2.longitude.values.shape[0] * 0.2))
+    new_lat = np.linspace(array_at2.latitude[0].values, array_at2.latitude[-1].values,
+                          int(array_at2.longitude.values.shape[0] * 0.2))
+    # array_at1 = array_at1.interp(latitude=new_lat, longitude=new_lon)
+    # array_at2 = array_at2.interp(latitude=new_lat, longitude=new_lon)
 
-    new_lon = np.linspace(array_at2.longitude[0].values, array_at2.longitude[-1].values, int(array_at2.longitude.values.shape[0] * 0.2))
-    new_lat = np.linspace(array_at2.latitude[0].values, array_at2.latitude[-1].values, int(array_at2.longitude.values.shape[0] * 0.2))
-    #array_at1 = array_at1.interp(latitude=new_lat, longitude=new_lon)
-    #array_at2 = array_at2.interp(latitude=new_lat, longitude=new_lon)
-
-    #array_at1 = array_at1.interp(latitude=array_at1.latitude, longitude=array_at1.longitude)
+    # array_at1 = array_at1.interp(latitude=array_at1.latitude, longitude=array_at1.longitude)
 
     # array_at1 = array_at
     # array_at2 = array_re**-1
@@ -51,48 +57,55 @@ def plot_local():
         array_at1.sel(time=time).plot.contourf(levels=100, cmap='RdBu', transform=ccrs.PlateCarree(),
                                                ax=axarr[0])
         axarr[0].coastlines()
-        array_at2.sel(time=time).plot.contourf(vmin=0,vmax=5,levels=100,cmap='nipy_spectral', transform=ccrs.PlateCarree(),
+        array_at2.sel(time=time).plot.contourf(vmin=0, vmax=5, levels=100, cmap='nipy_spectral',
+                                               transform=ccrs.PlateCarree(),
                                                ax=axarr[1])
-        ridges.sel(time=time).plot.contour(cmap='Greys',ax=axarr[1])
+        ridges.sel(time=time).plot.contour(cmap='Greys', ax=axarr[1])
         axarr[1].coastlines()
-        array_at3.sel(time=time).plot.contourf(levels=100,cmap='nipy_spectral', transform=ccrs.PlateCarree(),
+        array_at3.sel(time=time).plot.contourf(levels=100, cmap='nipy_spectral', transform=ccrs.PlateCarree(),
                                                ax=axarr[2])
-        ridges_momentum.sel(time=time).plot.contour(cmap='Greys',ax=axarr[2])
+        ridges_momentum.sel(time=time).plot.contour(cmap='Greys', ax=axarr[2])
         axarr[2].coastlines()
         # axarr.add_feature(states_provinces, edgecolor='gray')
         plt.savefig(f'./tempfigs/SL{time}.png')
         plt.close()
 
+
 domains = dict(
     AITCZ=dict(latitude=slice(-5, 15), longitude=slice(-50, -13)),
-    SACZ=dict(latitude=slice(-40,-5), longitude=slice(-62,-20))
-    )
+    SACZ=dict(latitude=slice(-40, -5), longitude=slice(-62, -20))
+)
 
 if __name__ == '__main__':
-    region = "SACZ"
+    region = "AITCZ"
+    lcs_time_len = 1
 
-    arr = read_nc_files(region)
-
-    #arr = xr.open_dataarray('/home/users/gmpp/out/SL_repelling_1980_1998.nc')
+    arr = read_nc_files(region=region,
+                        basepath='/group_workspaces/jasmin4/upscale/gmpp/convzones/',
+                        filename='SL_repelling_{year}' + f'_lcstimelen_{lcs_time_len}_v2.nc',
+                        year_range=range(1980, 1990))
+    # arr = xr.open_dataarray('/home/users/gmpp/out/SL_repelling_1980_1998.nc')
     array_mean = arr.groupby('time.month').mean('time')
-    #array_mean = xr.apply_ufunc(lambda x: np.log(x**0.5), array_mean)
-    array_anomaly = xr.apply_ufunc(lambda x, y: x - y, array_mean, array_mean.mean('month'))
-    #array_mean = array_anomaly # TODO just to plot var
-    max = array_anomaly.max() # TODO REPLACE FOR ARRAY_ANOMALY
-    min = array_anomaly.min()
+    # array_mean = xr.apply_ufunc(lambda x: np.log(x**0.5), array_mean)
+    # array_anomaly = xr.apply_ufunc(lambda x, y: x - y, array_mean, array_mean.mean('month'))
+    # array_mean = array_anomaly # TODO just to plot var
+    max = array_mean.max()  # TODO REPLACE FOR ARRAY_ANOMALY
+    min = array_mean.min()
     for month in range(1, 13):
         print(f'Plotting month {month}')
         fig = plt.figure()
-        ax = plt.axes(projection=ccrs.Orthographic(-40,-20))
-        array_anomaly.sel(month=month).plot.contourf(levels=10, cmap='RdBu', vmax=0.8*max,
-                                         vmin=0.8*min, ax=ax, transform=ccrs.PlateCarree())
+        ax = plt.axes(projection=ccrs.Orthographic(-40, -20))
+        array_mean.sel(month=month).plot.contourf(levels=10, cmap='RdBu',vmax=1.1,vmin=0.995,
+                                                      ax=ax, transform=ccrs.PlateCarree())
         ax.coastlines()
         ax.coastlines()
         ax.gridlines(draw_labels=False)
         fig.set_figheight(8)
         fig.set_figwidth(15)
-        #TODO FIG IS NAMED VAR
+        # TODO FIG IS NAMED VAR
         plt.savefig(
-            '/home/users/gmpp/phdlib/convlib/tempfigs/sl_repelling_month_{month}_var_{region}.png'.format(month="{:02d}".format(month), region=region)
+            '/home/users/gmpp/phdlib/convlib/tempfigs/sl_repelling_month_{month}_var_{region}_lcstimelen_{lcstimelen}.png'.format(
+                month="{:02d}".format(month),
+                region=region, lcstimelen=lcs_time_len)
         )
         plt.close()

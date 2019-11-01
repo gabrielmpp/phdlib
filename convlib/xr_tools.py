@@ -5,15 +5,16 @@ import numpy as np
 import traceback
 import cmath
 
+
 def createDomains(region, reverseLat=False):
     if region == "SACZ":
         domain = dict(latitude=[-40, -5], longitude=[-62, -20])
-    if region == "SACZ_small":
+    elif region == "SACZ_small":
         domain = dict(latitude=[-30, -20], longitude=[-50, -35])
     elif region == "AITCZ":
         domain = dict(latitude=[-5, 15], longitude=[-45, -1])
     elif region == "NEBR":
-        domain = dict(latitude=[-15, 5], longitude=[-45, -20])
+        domain = dict(latitude=[-15, 5], longitude=[-45, -15])
     else:
         raise ValueError(f'Region {region} not supported')
 
