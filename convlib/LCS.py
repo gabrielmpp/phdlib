@@ -3,10 +3,10 @@ import numpy as np
 import scipy.ndimage.filters as filters
 import scipy.ndimage as ndimage
 from typing import Tuple
-from meteomath import interpolate_c_stagger
+# from meteomath import interpolate_c_stagger
 from convlib.xr_tools import xy_to_latlon, to_cartesian
 from sklearn.preprocessing import MinMaxScaler
-
+from numba import jit
 # import matplotlib.pyplot as plt
 
 LCS_TYPES = ['attracting', 'repelling']
@@ -49,7 +49,8 @@ class LCS:
     earth_r = 6371000
 
     def __init__(self, lcs_type: str, timestep: float = 1, dataarray_template=None, timedim='time',
-                 shearless=False):
+                 shearless=False, subtimes_len=1):
+        self.subtimes_len = subtimes_len
         assert isinstance(lcs_type, str), "Parameter lcs_type expected to be str"
         assert lcs_type in LCS_TYPES, f"lcs_type {lcs_type} not available"
         self.lcs_type = lcs_type
@@ -60,7 +61,7 @@ class LCS:
         self.dataarray_template = dataarray_template
 
     def __call__(self, ds: xr.Dataset = None, u: xr.DataArray = None, v: xr.DataArray = None,
-                 verbose=False) -> xr.DataArray:
+                 verbose=True) -> xr.DataArray:
 
         """
         :param ds: xarray dataset containing u and v as variables
@@ -101,8 +102,15 @@ class LCS:
         def_tensor = self._compute_deformation_tensor(u, v, timestep)
         def_tensor = def_tensor.stack({'points': ['latitude', 'longitude']})
         def_tensor = def_tensor.dropna(dim='points')
+        # eigenvalues = xr.apply_ufunc(lambda x: compute_eigenvalues(x), def_tensor.groupby('points'),
+        #                             dask='parallelized',
+        #                             output_dtypes=[float]
+        #                             )
+        input_arrays = create_arrays_list(def_tensor)
         verboseprint("*---- Computing eigenvalues ----*")
-        eigenvalues = xr.apply_ufunc(lambda x: self._compute_eigenvalues(x), def_tensor.groupby('points'))
+        data = compute_eigenvalues(input_arrays)
+        verboseprint("*---- Done eigenvalues ----*")
+        eigenvalues = def_tensor.copy(data=data)
         eigenvalues = eigenvalues.unstack('points')
         eigenvalues = eigenvalues.isel(derivatives=0).drop('derivatives')
         eigenvalues = eigenvalues.expand_dims({self.timedim: [u[self.timedim].values[0]]})
@@ -132,10 +140,10 @@ class LCS:
         :return: xr.DataArray of the deformation tensor
         """
 
-        x_departure, y_departure = parcel_propagation(u, v, timestep, propdim=self.timedim)
+        x_departure, y_departure = parcel_propagation(u, v, timestep, propdim=self.timedim, subtimes_len=self.subtimes_len)
         # u, v, eigengrid = interpolate_c_stagger(u, v)
-        conversion_dydx = xr.apply_ufunc(lambda x: np.cos(x*np.pi/180), y_departure.latitude)
-        conversion_dxdy = xr.apply_ufunc(lambda x: np.cos(x*np.pi/180), x_departure.latitude)
+        conversion_dydx = xr.apply_ufunc(lambda x: np.cos(x * np.pi / 180), y_departure.latitude)
+        conversion_dxdy = xr.apply_ufunc(lambda x: np.cos(x * np.pi / 180), x_departure.latitude)
 
         dxdx = x_departure.diff('longitude') / x_departure.longitude.diff('longitude')
         dxdy = conversion_dxdy * x_departure.diff('latitude') / x_departure.latitude.diff('latitude')
@@ -217,7 +225,7 @@ class LCS:
         return def_tensor
 
 
-def parcel_propagation(u, v, timestep, propdim="time", verbose=True):
+def parcel_propagation(u, v, timestep, propdim="time", verbose=True, subtimes_len=10):
     """
     Method to propagate the parcel given u and v
 
@@ -229,9 +237,9 @@ def parcel_propagation(u, v, timestep, propdim="time", verbose=True):
     """
     verboseprint = print if verbose else lambda *a, **k: None
     earth_r = 6371000
-    conversion_y = 1 / earth_r  # converting m/s to rad/s
-    conversion_x = (earth_r ** (-1)) * xr.apply_ufunc(lambda x: np.cos(x * np.pi / 180), u.latitude) ** (-1)
-    conversion_x, _ = xr.broadcast(conversion_x, u.sel({propdim: 0}))
+    conversion_y = 180 / (np.pi * earth_r)  # converting m/s to rad/s
+    conversion_x = 180 * ((earth_r * np.pi) ** (-1)) * xr.apply_ufunc(lambda x: np.cos(x * np.pi / 180), u.latitude) ** (-1)
+    conversion_x, _ = xr.broadcast(conversion_x, u.isel({propdim: 0}))
     times = u[propdim].values.tolist()
     if timestep < 0:
         times.reverse()  # inplace
@@ -244,8 +252,7 @@ def parcel_propagation(u, v, timestep, propdim="time", verbose=True):
 
     for time in times:
         verboseprint(f'Propagating time {time}')
-        subtimes = np.arange(0, 10, 1).tolist()
-        subtimes_len = len(subtimes)
+        subtimes = np.arange(0, subtimes_len, 1).tolist()
 
         for subtime in subtimes:
             verboseprint(f'Propagating subtime {subtime}')
@@ -258,20 +265,17 @@ def parcel_propagation(u, v, timestep, propdim="time", verbose=True):
 
             # ---- propagating positions ---- #
 
-            y_buffer = positions_y + \
-                       subtimestep * conversion_y * \
-                       v.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
-                                                                   longitude=lon.tolist(),
-                                                                   kwargs={'fill_value': None}).values
+            positions_y = positions_y + \
+                          subtimestep * conversion_y * \
+                          v.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
+                                                        longitude=lon.tolist(),
+                                                        kwargs={'fill_value': None}).values
 
-            x_buffer = positions_x + \
-                       subtimestep * conversion_x.values * \
-                       u.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
-                                                                   longitude=lon.tolist(),
-                                                                   kwargs={'fill_value': None}).values
-            # ---- Updating positions ---- #
-            positions_x = x_buffer.copy()
-            positions_y = y_buffer.copy()
+            positions_x = positions_x + \
+                          subtimestep * conversion_x.values * \
+                          u.sel({propdim: time}).interp(latitude=lat.tolist(), method='linear',
+                                                        longitude=lon.tolist(),
+                                                        kwargs={'fill_value': None}).values
 
     positions_x = xr.DataArray(positions_x, dims=['latitude', 'longitude'],
                                coords=[u.latitude.values, u.longitude.values])
@@ -298,71 +302,84 @@ def find_maxima(eigenarray: xr.DataArray):
     return out_array, diff_array, labeled_array
 
 
+@jit(parallel=True)
+def compute_eigenvalues(arrays_list):
+    out_list = []
+    for def_tensor in arrays_list:
+        d_matrix = def_tensor.reshape([2, 2])
+        cauchy_green = np.matmul(d_matrix.T, d_matrix)
+        eigenvalues = max(np.linalg.eig(cauchy_green.reshape([2, 2]))[0])
+        eigenvalues = np.repeat(eigenvalues, 4).reshape([4])  # repeating the same value 4 times just to fill the xr.DataArray in a dummy dimension
+        out_list.append(eigenvalues)
+    out = np.stack(out_list, axis=1)
+    return out
+
+
+@jit(parallel=True)
+def create_arrays_list(ds, groupdim='points'):
+    ds_groups = list(ds.groupby(groupdim))
+    input_arrays = []
+    for label, group in ds_groups:  # have to do that because bloody groupby returns the labels
+        input_arrays.append(group.values)
+    return input_arrays
+
+
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
+    import pandas as pd
 
-    nt = 200
-    nx = 120
-    ny = 60
-    dx = 1
-    epsilon = 0
-    mode = 'repelling'
-    backwards = True
-    shearless = False
-    latlon_array = xr.DataArray(np.zeros([ny, nx, nt]), dims=['latitude', 'longitude', 't'],
-                                coords={'longitude': np.linspace(-80, -80 + nx * dx, nx),
-                                        'latitude': np.linspace(-60, -60 + nx * dx, ny), 't': np.linspace(0, 1, nt)})
-    latlon_array.isel(t=0).plot()
+    lat1 = -60
+    lat2 = -5
+    lon1 = -80
+    lon2 = -30
+    dx = 0.2
+    earth_r = 6371000
+    subtimes_len = 2
+    timestep = 6 * 3600
+    ntime = 4
+    ky = 10
+    kx = 40
+    time_dir = 'backward'
+    timestep = -timestep if time_dir == 'backward' else timestep
+
+    nlat = int((lat2 - lat1) / dx)
+    nlon = int((lon2 - lon1) / dx)
+    latitude = np.linspace(lat1, lat2, nlat)
+    longitude = np.linspace(lon1, lon2, nlon)
+    time = pd.date_range("2000-01-01T00:00:00", periods=ntime, freq="6H")
+    time_idx = np.array([x for x in range(len(time))])
+    frq = 0.25
+    u_data = 10 * np.ones([nlat, nlon, len(time)]) * (np.sin(ky*np.pi*latitude/180)).reshape([nlat,1,1]) * np.cos(time_idx * frq).reshape([1,1,len(time)])
+    v_data = 4 * np.ones([nlat, nlon, len(time)]) * (np.sin(kx*np.pi*longitude/360)).reshape([1,nlon,1]) * np.cos(time_idx * frq).reshape([1,1,len(time)])
+
+    u = xr.DataArray(u_data, dims=['latitude', 'longitude', 'time'],
+                     coords={'latitude': latitude, 'longitude': longitude, 'time': time})
+    v = xr.DataArray(v_data, dims=['latitude', 'longitude', 'time'],
+                     coords={'latitude': latitude, 'longitude': longitude, 'time': time})
+    lcs = LCS(lcs_type='repelling', timestep=timestep, timedim='time', subtimes_len=subtimes_len)
+
+    u.name = 'u'
+    v.name = 'v'
+    ds = xr.merge([u, v])
+    ftle = lcs(ds)
+    dep_x, dep_y = parcel_propagation(u, v, timestep=timestep, subtimes_len=subtimes_len)
+    origin = np.meshgrid(longitude, latitude)[0]
+    origin.shape
+    displacement = dep_x.copy(data=dep_x - origin)
+    plt.streamplot(longitude, latitude, u.isel(time=0).values, v.isel(time=0).values)
+    (displacement / len(time)).plot()
     plt.show()
-    cartesian_array = to_cartesian(latlon_array)
-    scalerx = MinMaxScaler(feature_range=(0, 2))
-    scalery = MinMaxScaler(feature_range=(0, 1))
-
-    scaled_x = scalerx.fit_transform(cartesian_array.x.values.reshape(-1, 1))
-    scaled_y = scalery.fit_transform(cartesian_array.y.values.reshape(-1, 1))
-
-    grid = np.meshgrid(scaled_x, scaled_y)
-    u = []
-    v = []
-    for t in cartesian_array.t.values:
-        v_temp, u_temp = double_gyre(grid[1], grid[0], t, epsilon, nt=cartesian_array.t.values.shape[0])
-        u.append(u_temp)
-        v.append(v_temp)
-
-    u = np.stack(u, axis=2)
-    v = np.stack(v, axis=2)
-
-    u = cartesian_array.copy(data=u)
-    v = cartesian_array.copy(data=v)
-    mag = (u ** 2 + v ** 2) ** 0.5
-    mag.name = 'magnitude'
-
-    # for time in range(nt):
-
-    #    plt.streamplot(y=u.latitude.values,x=u.longitude.values, u=u.isel(t=time).values,
-    #                       v=v.isel(t=time).values, color=mag.isel(t=time).values)
-
-    #   plt.show()
-
-    if backwards:
-        lcs = LCS(mode, -1000, dataarray_template=None, timedim='t', shearless=shearless)
-    else:
-        lcs = LCS(mode, 1000, dataarray_template=None, timedim='t', shearless=shearless)
-
-    eigenvalues = lcs(u=u, v=v)
-
-    # eigenvalues.isel(t=0).plot()
-    # plt.show()
-
-    for time in range(nt):
-        eigenvalues.isel(t=0).plot()
-        plt.streamplot(x=u.longitude.values, y=u.latitude.values, u=u.isel(t=time).values,
-                       v=v.isel(t=time).values, color=mag.isel(t=time).values)
-        plt.show()
-    from xrviz.dashboard import Dashboard
-
-    dashboard = Dashboard(u)
-    dashboard.show()
-    plt.streamplot(x=u.longitude.values, y=u.latitude.values, u=u.isel(t=time).values,
-                   v=v.isel(t=time).values, color=mag.isel(t=time).values)
+    dep_x.plot(vmax=-30, vmin=-80,cmap='rainbow')
     plt.show()
+    dep_y.plot(vmax=-6, vmin=-60,cmap='rainbow')
+    plt.streamplot(longitude, latitude, u.isel(time=0).values, v.isel(time=0).values)
+    plt.show()
+
+    #
+    u.isel(time=0).plot()
+    plt.show()
+    plt.streamplot(longitude, latitude, u.isel(time=0).values, v.isel(time=0).values)
+
+    ftle.isel(time=0).plot()
+    plt.show()
+    print("s")

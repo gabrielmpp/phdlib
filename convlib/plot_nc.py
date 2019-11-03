@@ -78,7 +78,7 @@ domains = dict(
 
 if __name__ == '__main__':
     region = "AITCZ"
-    lcs_time_len = 1
+    lcs_time_len = 4
 
     arr = read_nc_files(region=region,
                         basepath='/group_workspaces/jasmin4/upscale/gmpp/convzones/',
