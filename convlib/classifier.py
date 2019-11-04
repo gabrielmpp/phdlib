@@ -1,7 +1,7 @@
 import xarray as xr
 from meteomath import to_cartesian, divergence
 import pandas as pd
-from convlib.LCS import LCS, parcel_propagation
+from LCS import LCS, parcel_propagation
 import sys
 from typing import Optional
 import numpy as np

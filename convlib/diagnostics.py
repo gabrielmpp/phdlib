@@ -2,7 +2,7 @@ import xarray as xr
 import matplotlib as mpl
 
 mpl.use('Agg')
-from convlib.xr_tools import read_nc_files
+from convlib.xr_tools import read_nc_files, createDomains
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import meteomath
@@ -129,7 +129,7 @@ def filter(region, years):
 
 
 @jit(parallel=True)
-def mask_seabreezes(times, dep_lat, dep_lon, landSea_mask):
+def apply_binary_mask(times, dep_lat, dep_lon, mask, reverse=True):
     array_list = []
     for i in numba.prange(times.shape[0]):
         time = times[i]
@@ -145,13 +145,26 @@ def mask_seabreezes(times, dep_lat, dep_lon, landSea_mask):
         landsea = list()
         for point in points:
             landsea.append(
-                landSea_mask.sel(latitude=point[0], longitude=point[1], method='nearest').values
+                mask.sel(latitude=point[0], longitude=point[1], method='nearest').values
             )
         vals = dep_lat_.values
-        vals[~np.isnan(vals)] = [0 if x == 1 else 1 for x in landsea]  # switching sea breeze to 1
+        if reverse:
+            vals[~np.isnan(vals)] = [0 if x == 1 else 1 for x in landsea]  # switching sea breeze to 1
+        else:
+            vals[~np.isnan(vals)] = [x for x in landsea]
         array_list.append(vals)
         print("Done time {}".format(time))
     return array_list
+
+
+def add_basin_coord(array, MAG):
+    basin_names = list(MAG.coords.keys())
+    [basin_names.remove(element) for element in ["lat", "lon", "points", "time"]]
+    basin_avg = {}
+    for basin in basin_names:
+        array.coords[basin] = (("latitude", "longitude"), MAG.coords[basin].values)
+
+    return array
 
 
 def find_seabreezes(region, start_year, final_year, lcstimelen):
@@ -185,38 +198,41 @@ def find_seabreezes(region, start_year, final_year, lcstimelen):
     dep_x, dep_y = departures.x_departure, departures.y_departure
 
     dep_lat, dep_lon = dep_y.where(ftle_array > threshold, np.nan), dep_x.where(ftle_array > threshold, np.nan)
-    #dep_lat = dep_y.copy(data=dep_lat)
-    #dep_lon = dep_x.copy(data=dep_lon)
+    # dep_lat = dep_y.copy(data=dep_lat)
+    # dep_lon = dep_x.copy(data=dep_lon)
     dep_mask = xr.full_like(dep_x, 1)
 
     # Selecting only continental points (sort of)
     dep_lat = dep_lat.where(landSea_mask == 1, drop=True)
     dep_lon = dep_lon.where(landSea_mask == 1, drop=True)
     times = dep_lat.time.values
-    array_list = mask_seabreezes(times, dep_lat, dep_lon, landSea_mask)
+    array_list = apply_binary_mask(times, dep_lat, dep_lon, landSea_mask)
 
     seabreeze = dep_lat.copy(data=np.stack(array_list))
     breezetime = seabreeze.where(seabreeze == 1, drop=True).groupby('time.hour').sum('time').stack(
         points=['latitude', 'longitude']).groupby('points').apply(np.argmax).unstack()
-    #seabreeze = dep_lat.groupby('time').apply(dummy)
-    seabreeze.to_netcdf(f'/group_workspaces/jasmin4/upscale/gmpp/convzones/seabreeze_{start_year}_{final_year}_{region}_lcstimelen_{lcstimelen}.nc')
+    # seabreeze = dep_lat.groupby('time').apply(dummy)
+    seabreeze.to_netcdf(
+        f'/group_workspaces/jasmin4/upscale/gmpp/convzones/seabreeze_{start_year}_{final_year}_{region}_lcstimelen_{lcstimelen}.nc')
     return seabreeze
 
 
-if __name__ == '__main__':
+def seabreeze():
     region = 'NEBR'
+
     lcstimelen = 1
     vmin = 0
     vmax = 0.6
     start_year, final_year = 1995, 1996
     years = range(start_year, final_year)
-    #seabreeze = xr.open_dataarray(f'/group_workspaces/jasmin4/upscale/gmpp/convzones/seabreeze_{start_year}_{final_year}_{region}.nc')
+    # seabreeze = xr.open_dataarray(f'/group_workspaces/jasmin4/upscale/gmpp/convzones/seabreeze_{start_year}_{final_year}_{region}.nc')
 
     seabreeze = find_seabreezes(region, start_year, final_year, lcstimelen)
     pr_array = read_nc_files(region=region,
                              basepath='/gws/nopw/j04/primavera1/observations/ERA5/',
                              filename='pr_ERA5_6hr_{year}010100-{year}123118.nc',
                              year_range=years, transformLon=True, reverseLat=True)
+
     pr_array = pr_array.sortby('latitude') * 6 * 3600  # total mm in 6h
 
     pr_array = pr_array.sel(latitude=seabreeze.latitude, longitude=seabreeze.longitude,
@@ -239,10 +255,10 @@ if __name__ == '__main__':
     #     plt.savefig('tempfigs/seabreeze/{}.png'.format(time.values))
     #     plt.close()
 
-    prec_frac = masked_precip.groupby('time.hour').sum('time')/pr_array.groupby('time.hour').sum('time')
+    prec_frac = masked_precip.groupby('time.hour').sum('time') / pr_array.groupby('time.hour').sum('time')
     total = 4 * seabreeze.groupby('time.hour').sum('time') / seabreeze.time.values.shape[0]
-    prec_frac = prec_frac/total
-    #total = total - total.mean('hour')
+    prec_frac = prec_frac / total
+    # total = total - total.mean('hour')
 
     hours = total.hour.values
     proj = ccrs.PlateCarree()
@@ -263,10 +279,9 @@ if __name__ == '__main__':
     for name, ax in axs.items():
         ax.set_title(name)
 
-
     for hour in hours:
         plot = prec_frac.sel(hour=hour).plot.contourf(ax=axs[hour], transform=ccrs.PlateCarree(), add_colorbar=False,
-                                         add_labels=False, levels=5, vmax=4, vmin=0, cmap='Blues')
+                                                      add_labels=False, levels=5, vmax=4, vmin=0, cmap='Blues')
         CS = total.sel(hour=hour).plot.contour(ax=axs[hour], levels=5, vmin=vmin, vmax=vmax, cmap="Reds")
         axs[hour].clabel(CS, inline=True, fontsize=15)
         axs[hour].coastlines(color='black')
@@ -283,28 +298,125 @@ if __name__ == '__main__':
     plt.savefig('tempfigs/seabreeze/ciclo_diurno.png')
 
 
+if __name__ == '__main__':
+    region = 'SACZ'
+    years = range(2000, 2001)
+    lcstimelen = 1
+    MAG = xr.open_dataset('~/phdlib/convlib/data/xarray_mair_grid_basins.nc')
 
-    '''
-    array_list = []
+    departures = read_nc_files(region=region,
+                               basepath='/group_workspaces/jasmin4/upscale/gmpp/convzones/',
+                               filename='SL_repelling_{year}_departuretimelen' + f'_{lcstimelen}_v2.nc',
+                               year_range=years, reverseLat=True).isel(time=slice(None, None))
+    ftle_array = read_nc_files(region=region,
+                               basepath='/group_workspaces/jasmin4/upscale/gmpp/convzones/',
+                               filename='SL_repelling_{year}_lcstimelen' + f'_{lcstimelen}_v2.nc',
+                               year_range=years).isel(time=slice(None, None))
+    u = read_nc_files(region=region,
+                      basepath='/gws/nopw/j04/primavera1/observations/ERA5/',
+                      filename='viwve_ERA5_6hr_{year}010100-{year}123118.nc',
+                      year_range=years, transformLon=True, reverseLat=True)
+    v = read_nc_files(region=region,
+                      basepath='/gws/nopw/j04/primavera1/observations/ERA5/',
+                      filename='viwvn_ERA5_6hr_{year}010100-{year}123118.nc',
+                      year_range=years, transformLon=True, reverseLat=True)
+    tcwv = read_nc_files(region=region,
+                      basepath='/gws/nopw/j04/primavera1/observations/ERA5/',
+                      filename='tcwv_ERA5_6hr_{year}010100-{year}123118.nc',
+                      year_range=years, transformLon=True, reverseLat=True)
+    ftle = ftle_array.sel(latitude=MAG.lat.values, longitude=MAG.lon.values, method='nearest')
+    u = u.sel(latitude=MAG.lat.values, longitude=MAG.lon.values, method='nearest')
+    v = v.sel(latitude=MAG.lat.values, longitude=MAG.lon.values, method='nearest')
+    tcwv = tcwv.sel(latitude=MAG.lat.values, longitude=MAG.lon.values, method='nearest')
+    departures.time.values = tcwv.time.values
 
-    def mask_f(x):
-        time = x.time
-        not_nans = ~np.isnan(dep_lat.sel(time=time).values)
-        kwargs = dict(latitude=dep_lat.sel(time=time).values[not_nans].round(2),
-                      longitude=dep_lon.sel(time=time).values[not_nans].round(2))
-        kwargs = pd.DataFrame(kwargs)
-        kwargs.drop_duplicates(inplace=True)
-        kwargs = kwargs.to_dict(orient='list')
-        kwargs['method'] = 'nearest'
+    departures = departures.sel(latitude=MAG.lat.values, longitude=MAG.lon.values, method='nearest')
+    departures = add_basin_coord(MAG=MAG, array=departures)
+    ftle = add_basin_coord(MAG=MAG, array=ftle)
+    tcwv = add_basin_coord(MAG=MAG, array=tcwv)
+    u = add_basin_coord(MAG=MAG, array=u)
+    v = add_basin_coord(MAG=MAG, array=v)
+    u = u/tcwv
+    v = v/tcwv
 
-        foo = x.sel(**kwargs, drop=True)
-        x = x.loc[foo.latitude.values, foo.longitude.values]
+    avg_tiete = ftle.where(ftle.Tiete == 1).stack(points=['latitude', 'longitude']).sum('points')
 
-        print("Done time {}".format(time.values))
-        array_list.append(x)
-        return x
+    summer = np.array([pd.to_datetime(x).month in [1, 2, 12] for x in ftle.time.values])
+    winter = np.array([pd.to_datetime(x).month in [5, 6, 7] for x in ftle.time.values])
+    avg_tiete_summer = avg_tiete.sel(time=avg_tiete.time[summer])
+    departures_tiete = departures.where(departures.Tiete == 1, drop=True)
+    departures_tiete_summer = departures_tiete.sel(time=departures_tiete.time[summer]).where(avg_tiete_summer > avg_tiete_summer.quantile(0.8))
+    dep_lon, dep_lat = departures_tiete_summer.x_departure, departures_tiete_summer.y_departure
+    MAG = MAG.rename({'lat': 'latitude', 'lon': 'longitude'})
 
-    #dep_mask = dep_mask.stack(points=['latitude','longitude'])
+    masked = apply_binary_mask(dep_lat.time.values, dep_lat=dep_lat, dep_lon=dep_lon, mask=MAG.amazon, reverse=False)
+    departs = dep_lat.copy(data=np.stack(masked))
 
-    dep_mask = dep_mask.groupby('time').apply(mask_f)
-    '''
+    proj = ccrs.PlateCarree()
+    fig = plt.figure(figsize=[10, 10])
+    gs = gridspec.GridSpec(1, 1, width_ratios=[1])
+    ax = fig.add_subplot(gs[0, 0], projection=proj)
+    ftle_sacz_amazon_tiete = ftle.sel(time=departs.where(departs == 1, drop=True).time)
+    u_sacz_amazon_tiete = u.sel(time=departs.where(departs == 1, drop=True).time).mean('time')
+    v_sacz_amazon_tiete = v.sel(time=departs.where(departs == 1, drop=True).time).mean('time')
+    magnitude = (u_sacz_amazon_tiete**2 + v_sacz_amazon_tiete**2)**0.5
+    ftle_sacz_amazon_tiete.mean('time').plot.contourf(ax=ax, transform=ccrs.PlateCarree(),
+        cmap='YlGnBu', levels=10, vmax=ftle.quantile(0.9))
+    strm = ax.streamplot(x=u_sacz_amazon_tiete.longitude.values, y=u_sacz_amazon_tiete.latitude.values, color=magnitude.values,
+                  u=u_sacz_amazon_tiete.values, v=v_sacz_amazon_tiete.values,
+                               transform=ccrs.PlateCarree(), density=1, cmap="autumn")
+    MAG.Tiete.where(MAG.Tiete == 1).where(MAG.Tiete == 1, 0).sel(createDomains(region)).plot.contour(add_colorbar=False,
+                                                                                                 levels=[0.5],
+                                                                                                 cmap='Gray',
+                                                                                                 ax=ax)
+    MAG.amazon.where(MAG.amazon == 1).where(MAG.amazon == 1, 0).sel(createDomains(region)).plot.contour(add_colorbar=False,
+                                                                                                 levels=[0.5],
+                                                                                                 cmap='Gray',
+                                                                                                 ax=ax)
+    fig.colorbar(strm.lines)
+    ax.coastlines()
+    plt.savefig('tempfigs/basins/sacz_amazon_tiete.pdf')
+    plt.close()
+    ftle_summer = ftle.sel(time=ftle.time[summer])
+    ftle_winter = ftle.sel(time=ftle.time[winter])
+
+    fig = plt.figure(figsize=[40, 20])
+    gs = gridspec.GridSpec(1, 3, width_ratios=[1, 1, 0.05])
+    axs = {}
+    axs['summer'] = fig.add_subplot(gs[0, 0], projection=proj)
+    axs['winter'] = fig.add_subplot(gs[0, 1], projection=proj)
+    # Disable axis ticks
+    for ax in axs.values():
+        ax.tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
+
+    # Add titles
+    for name, ax in axs.items():
+        ax.set_title(name)
+
+    plot = ftle_summer.sel(createDomains(region)).where(avg_tiete > avg_tiete.quantile(0.8)).mean('time').plot.contourf(
+        cmap='YlGnBu', levels=10, add_colorbar=False, ax=axs['summer'],
+        vmax=ftle.quantile(0.9))
+
+    MAG.Tiete.where(MAG.Tiete == 1).where(MAG.Tiete == 1, 0).sel(createDomains(region)).plot.contour(add_colorbar=False,
+                                                                                                 levels=[0.5],
+                                                                                                 cmap='Gray',
+                                                                                                 ax=axs['summer'])
+
+    axs['summer'].coastlines(color='black')
+
+    ftle_winter.sel(createDomains(region)).where(avg_tiete > avg_tiete.quantile(0.8)).mean('time').plot.contourf(
+        cmap='YlGnBu', levels=10, add_colorbar=False, ax=axs['winter'],
+        vmax=ftle.quantile(0.9))
+    axs['winter'].coastlines(color='black')
+
+    MAG.Tiete.where(MAG.Tiete == 1).where(MAG.Tiete == 1, 0).sel(createDomains(region)).plot.contour(add_colorbar=False,
+                                                                                                 levels=[0.5],
+                                                                                                 cmap='Gray',
+                                                                                                 ax=axs['winter'])
+
+    cbar_gs = gridspec.GridSpecFromSubplotSpec(1, 1, subplot_spec=gs[:, 2], wspace=2.5)
+    cax = fig.add_subplot(cbar_gs[0])
+    plt.colorbar(plot, cax)
+
+    plt.savefig('tempfigs/basins/summer.png')
+    plt.close()

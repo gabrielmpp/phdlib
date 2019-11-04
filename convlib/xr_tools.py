@@ -16,7 +16,8 @@ def createDomains(region, reverseLat=False):
     elif region == "NEBR":
         # domain = dict(latitude=[-15, 5], longitude=[-45, -15])
         domain = dict(latitude=[-10, 5], longitude=[-55, -40])
-
+    elif region is None:
+        domain = dict(latitude=[None, None], longitude=[None, None])
     else:
         raise ValueError(f'Region {region} not supported')
 
@@ -137,8 +138,8 @@ def to_cartesian(array, lon_name='longitude', lat_name='latitude', earth_r=63710
     :param earth_r: earth radius
     :return: xr.DataArray with x and y cartesian coordinates
     """
-    array['x'] = array[lon_name]*np.pi*earth_r/180
-    array['y'] = xr.apply_ufunc(lambda x: np.sin(np.pi*x/180)*earth_r, array[lat_name])
+    array['x'] = array[lon_name] * np.pi * earth_r / 180
+    array['y'] = xr.apply_ufunc(lambda x: np.sin(np.pi * x / 180) * earth_r, array[lat_name])
     return array
 
 
@@ -149,6 +150,7 @@ def xy_to_latlon(x, y, earth_r=6371000):
     longitude = x * 180 / (np.pi * earth_r)
     latitude = np.arcsin(y / earth_r) * 180 / np.pi
     return latitude, longitude
+
 
 def get_xr_seq(ds, commun_sample_dim, idx_seq):
     """
