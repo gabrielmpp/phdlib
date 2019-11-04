@@ -10,7 +10,9 @@ from skimage.morphology import skeletonize
 from typing import List
 from skimage.feature import hessian_matrix, hessian_matrix_eigvals, canny
 from convlib.xr_tools import read_nc_files
-
+import matplotlib.gridspec as gridspec
+import cartopy.feature as cfeature
+import pandas as pd
 
 def detect_ridges(gray, sigma=0.5):
     hxx, hyy, hxy = hessian_matrix(gray, sigma)
@@ -77,25 +79,71 @@ domains = dict(
 )
 
 if __name__ == '__main__':
-    region = "AITCZ"
-    lcs_time_len = 4
+    region = "NEBR"
+    lcs_time_len = 1
 
     arr = read_nc_files(region=region,
                         basepath='/group_workspaces/jasmin4/upscale/gmpp/convzones/',
                         filename='SL_repelling_{year}' + f'_lcstimelen_{lcs_time_len}_v2.nc',
-                        year_range=range(1980, 1990))
+                        year_range=range(1980, 2000))
     # arr = xr.open_dataarray('/home/users/gmpp/out/SL_repelling_1980_1998.nc')
-    array_mean = arr.groupby('time.month').mean('time')
+    sel_hour = 18
+    hours = [pd.to_datetime(x).hour for x in arr.time.values]
+    #arr = xr.apply_ufunc(lambda x: np.log(x), arr ** 0.5)
+
+    array_mean = arr.where(np.array(hours).reshape(arr.shape[0], 1, 1) == sel_hour).groupby('time.season').mean('time')
     # array_mean = xr.apply_ufunc(lambda x: np.log(x**0.5), array_mean)
     # array_anomaly = xr.apply_ufunc(lambda x, y: x - y, array_mean, array_mean.mean('month'))
     # array_mean = array_anomaly # TODO just to plot var
-    max = array_mean.max()  # TODO REPLACE FOR ARRAY_ANOMALY
-    min = array_mean.min()
+    vmax = 0.8*array_mean.max()  # TODO REPLACE FOR ARRAY_ANOMALY
+    vmin = array_mean.min()
+    proj = ccrs.PlateCarree()
+
+
+    seasons = array_mean.season.values
+    fig = plt.figure(figsize=[20, 20])
+    gs = gridspec.GridSpec(2, 3, width_ratios=[1, 1, 0.05])
+    axs = {}
+    axs[seasons[0]] = fig.add_subplot(gs[0, 0], projection=proj)
+    axs[seasons[1]] = fig.add_subplot(gs[0, 1], projection=proj)
+    axs[seasons[2]] = fig.add_subplot(gs[1, 0], projection=proj)
+    axs[seasons[3]] = fig.add_subplot(gs[1, 1], projection=proj)
+
+    # Disable axis ticks
+    for ax in axs.values():
+        ax.tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
+
+    # Add titles
+    for name, ax in axs.items():
+        ax.set_title(name)
+
+
+    for season in seasons:
+        plot = array_mean.sel(season=season).plot.contourf(ax=axs[season], transform=ccrs.PlateCarree(), add_colorbar=False,
+                                         add_labels=False, levels=30, vmax=vmax, vmin=vmin, cmap='YlGnBu')
+        axs[season].coastlines(color='black')
+        axs[season].add_feature(cfeature.NaturalEarthFeature(
+            'cultural', 'admin_1_states_provinces_lines', scale='50m',
+            edgecolor='gray', facecolor='none'))
+        axs[season].add_feature(cfeature.NaturalEarthFeature(
+            'cultural', 'populated_places', scale='50m',
+            edgecolor='black', facecolor='none'))
+        axs[season].add_feature(cfeature.BORDERS)
+    cbar_gs = gridspec.GridSpecFromSubplotSpec(1, 1, subplot_spec=gs[:, 2], wspace=2.5)
+    cax = fig.add_subplot(cbar_gs[0])
+    plt.colorbar(plot, cax)
+    plt.savefig(f'tempfigs/seasonal/FTLE_{region}_lcstimelen_{lcs_time_len}_hour_{sel_hour}.png')
+    plt.close()
+
+
+
+
+    """
     for month in range(1, 13):
         print(f'Plotting month {month}')
         fig = plt.figure()
         ax = plt.axes(projection=ccrs.Orthographic(-40, -20))
-        array_mean.sel(month=month).plot.contourf(levels=10, cmap='RdBu',vmax=1.1,vmin=0.995,
+        array_mean.sel(month=month).plot.contourf(levels=10, cmap='RdBu',vmax=vmax,vmin=vmin,
                                                       ax=ax, transform=ccrs.PlateCarree())
         ax.coastlines()
         ax.coastlines()
@@ -109,3 +157,4 @@ if __name__ == '__main__':
                 region=region, lcstimelen=lcs_time_len)
         )
         plt.close()
+    """

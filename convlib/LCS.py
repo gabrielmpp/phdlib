@@ -8,7 +8,7 @@ from convlib.xr_tools import xy_to_latlon, to_cartesian
 from sklearn.preprocessing import MinMaxScaler
 from numba import jit
 # import matplotlib.pyplot as plt
-
+import numba
 LCS_TYPES = ['attracting', 'repelling']
 
 
@@ -226,6 +226,7 @@ class LCS:
 
 
 def parcel_propagation(u, v, timestep, propdim="time", verbose=True, subtimes_len=10):
+    import scipy.interpolate as interp
     """
     Method to propagate the parcel given u and v
 
@@ -305,7 +306,8 @@ def find_maxima(eigenarray: xr.DataArray):
 @jit(parallel=True)
 def compute_eigenvalues(arrays_list):
     out_list = []
-    for def_tensor in arrays_list:
+    for i in numba.prange(len(arrays_list)):
+        def_tensor = arrays_list[i]
         d_matrix = def_tensor.reshape([2, 2])
         cauchy_green = np.matmul(d_matrix.T, d_matrix)
         eigenvalues = max(np.linalg.eig(cauchy_green.reshape([2, 2]))[0])
@@ -328,11 +330,11 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import pandas as pd
 
-    lat1 = -60
-    lat2 = -5
+    lat1 = -80
+    lat2 = 20
     lon1 = -80
     lon2 = -30
-    dx = 0.2
+    dx = 0.5
     earth_r = 6371000
     subtimes_len = 2
     timestep = 6 * 3600
@@ -349,8 +351,8 @@ if __name__ == '__main__':
     time = pd.date_range("2000-01-01T00:00:00", periods=ntime, freq="6H")
     time_idx = np.array([x for x in range(len(time))])
     frq = 0.25
-    u_data = 10 * np.ones([nlat, nlon, len(time)]) * (np.sin(ky*np.pi*latitude/180)).reshape([nlat,1,1]) * np.cos(time_idx * frq).reshape([1,1,len(time)])
-    v_data = 4 * np.ones([nlat, nlon, len(time)]) * (np.sin(kx*np.pi*longitude/360)).reshape([1,nlon,1]) * np.cos(time_idx * frq).reshape([1,1,len(time)])
+    u_data = 20 * np.ones([nlat, nlon, len(time)]) * (np.sin(ky*np.pi*latitude/180)**2).reshape([nlat,1,1]) * np.cos(time_idx * frq).reshape([1,1,len(time)])
+    v_data = 40 * np.ones([nlat, nlon, len(time)]) * (np.sin(kx*np.pi*longitude/360)**2).reshape([1,nlon,1]) * np.cos(time_idx * frq).reshape([1,1,len(time)])
 
     u = xr.DataArray(u_data, dims=['latitude', 'longitude', 'time'],
                      coords={'latitude': latitude, 'longitude': longitude, 'time': time})
@@ -378,7 +380,11 @@ if __name__ == '__main__':
     #
     u.isel(time=0).plot()
     plt.show()
-    plt.streamplot(longitude, latitude, u.isel(time=0).values, v.isel(time=0).values)
+    plt.streamplot(longitude, latitude, u.isel(time=2).values, v.isel(time=2).values)
+    ftle = ftle.where(dep_x <= dep_x.longitude.max())
+    ftle = ftle.where(dep_x >= dep_x.longitude.min())
+    ftle = ftle.where(dep_y <= dep_x.latitude.max())
+    ftle = ftle.where(dep_y >= dep_x.latitude.min())
 
     ftle.isel(time=0).plot()
     plt.show()

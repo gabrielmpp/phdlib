@@ -14,7 +14,9 @@ def createDomains(region, reverseLat=False):
     elif region == "AITCZ":
         domain = dict(latitude=[-5, 15], longitude=[-45, -1])
     elif region == "NEBR":
-        domain = dict(latitude=[-15, 5], longitude=[-45, -15])
+        # domain = dict(latitude=[-15, 5], longitude=[-45, -15])
+        domain = dict(latitude=[-10, 5], longitude=[-55, -40])
+
     else:
         raise ValueError(f'Region {region} not supported')
 

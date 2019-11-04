@@ -13,6 +13,8 @@ from convlib.xr_tools import xy_to_latlon
 import cartopy.feature as cfeature
 from xrtools import xrumap as xru
 import pandas as pd
+from numba import jit
+import numba
 
 
 def precip_fraction(region, years):
@@ -126,6 +128,32 @@ def filter(region, years):
                                      transformed.encoded_dims.values])
 
 
+@jit(parallel=True)
+def mask_seabreezes(times, dep_lat, dep_lon, landSea_mask):
+    array_list = []
+    for i in numba.prange(times.shape[0]):
+        time = times[i]
+        dep_lat_, dep_lon_ = dep_lat.sel(time=time), dep_lon.sel(time=time)
+        dep_lat_nan = np.isnan(dep_lat_.values.flatten())
+        dep_lon_nan = np.isnan(dep_lon_.values.flatten())
+        assert (dep_lat_nan == dep_lon_nan).all(), "This should not happen!"
+
+        dep_lat_no_nan = dep_lat_.values.flatten()[~dep_lat_nan]
+        dep_lon_no_nan = dep_lon_.values.flatten()[~dep_lon_nan]
+
+        points = [x for x in zip(dep_lat_no_nan, dep_lon_no_nan)]
+        landsea = list()
+        for point in points:
+            landsea.append(
+                landSea_mask.sel(latitude=point[0], longitude=point[1], method='nearest').values
+            )
+        vals = dep_lat_.values
+        vals[~np.isnan(vals)] = [0 if x == 1 else 1 for x in landsea]  # switching sea breeze to 1
+        array_list.append(vals)
+        print("Done time {}".format(time))
+    return array_list
+
+
 def find_seabreezes(region, start_year, final_year, lcstimelen):
     years = range(start_year, final_year)
 
@@ -164,42 +192,25 @@ def find_seabreezes(region, start_year, final_year, lcstimelen):
     # Selecting only continental points (sort of)
     dep_lat = dep_lat.where(landSea_mask == 1, drop=True)
     dep_lon = dep_lon.where(landSea_mask == 1, drop=True)
+    times = dep_lat.time.values
+    array_list = mask_seabreezes(times, dep_lat, dep_lon, landSea_mask)
 
-
-    def dummy(x):
-        time = x.time
-        dep_lat_, dep_lon_ = dep_lat.sel(time=time), dep_lon.sel(time=time)
-        dep_lat_nan = np.isnan(dep_lat_.values.flatten())
-        dep_lon_nan = np.isnan(dep_lon_.values.flatten())
-        assert (dep_lat_nan == dep_lon_nan).all(), "This should not happen!"
-
-        dep_lat_no_nan = dep_lat_.values.flatten()[~dep_lat_nan]
-        dep_lon_no_nan = dep_lon_.values.flatten()[~dep_lon_nan]
-
-        points = [x for x in zip(dep_lat_no_nan, dep_lon_no_nan)]
-        landsea = list()
-        for point in points:
-            landsea.append(
-                landSea_mask.sel(latitude=point[0], longitude=point[1], method='nearest').values
-            )
-        vals = dep_lat_.values
-        vals[~np.isnan(vals)] = [0 if x == 1 else 1 for x in landsea]  # switching sea breeze to 1
-        dep_lat_.values = vals
-        print("Done time {}".format(time))
-        return dep_lat_
-
-
-    seabreeze = dep_lat.groupby('time').apply(dummy)
+    seabreeze = dep_lat.copy(data=np.stack(array_list))
+    breezetime = seabreeze.where(seabreeze == 1, drop=True).groupby('time.hour').sum('time').stack(
+        points=['latitude', 'longitude']).groupby('points').apply(np.argmax).unstack()
+    #seabreeze = dep_lat.groupby('time').apply(dummy)
     seabreeze.to_netcdf(f'/group_workspaces/jasmin4/upscale/gmpp/convzones/seabreeze_{start_year}_{final_year}_{region}_lcstimelen_{lcstimelen}.nc')
+    return seabreeze
+
 
 if __name__ == '__main__':
     region = 'NEBR'
     lcstimelen = 1
     vmin = 0
     vmax = 0.6
-    start_year, final_year = 2000, 2001
+    start_year, final_year = 1995, 1996
     years = range(start_year, final_year)
-    seabreeze = xr.open_dataarray(f'/group_workspaces/jasmin4/upscale/gmpp/convzones/seabreeze_{start_year}_{final_year}_{region}.nc')
+    #seabreeze = xr.open_dataarray(f'/group_workspaces/jasmin4/upscale/gmpp/convzones/seabreeze_{start_year}_{final_year}_{region}.nc')
 
     seabreeze = find_seabreezes(region, start_year, final_year, lcstimelen)
     pr_array = read_nc_files(region=region,
