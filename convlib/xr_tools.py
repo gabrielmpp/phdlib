@@ -35,7 +35,8 @@ def createDomains(region, reverseLat=False):
 def read_nc_files(region=None,
                   basepath="/group_workspaces/jasmin4/upscale/gmpp/convzones/",
                   filename="SL_repelling_{year}_lcstimelen_1.nc",
-                  year_range=range(2000, 2008), transformLon=False, lonName="longitude", reverseLat=False):
+                  year_range=range(2000, 2008), transformLon=False, lonName="longitude", reverseLat=False,
+                  time_slice_for_each_year=slice(None, None)):
     """
 
     :param transformLon:
@@ -74,7 +75,7 @@ def read_nc_files(region=None,
                 break
 
         if isinstance(array, (xr.DataArray, xr.Dataset)):
-            file_list.append(transform(array))
+            file_list.append(transform(array).isel(time=time_slice_for_each_year))
         else:
             print(f'Year {year} unavailable')
     print(file_list)
@@ -83,23 +84,23 @@ def read_nc_files(region=None,
     return full_array
 
 
-def get_xr_seq(ds: xr.DataArray, seq_dim: str, idx_seq: List[int]):
-    """
-    Function that create the sequence dimension in overlapping time intervals
+# def get_xr_seq(ds: xr.DataArray, seq_dim: str, idx_seq: List[int]):
+#    """
+#    Function that create the sequence dimension in overlapping time intervals
+#
+#    :param ds:
+#    :param seq_dim:
+#    :param idx_seq:
+#    :return: xr.DataArray
+#    """
+#    dss = []
+#    for idx in idx_seq:
+#        dss.append(ds.shift({seq_dim: -idx}))
 
-    :param ds:
-    :param seq_dim:
-    :param idx_seq:
-    :return: xr.DataArray
-    """
-    dss = []
-    for idx in idx_seq:
-        dss.append(ds.shift({seq_dim: -idx}))
+#    dss = xr.concat(dss, dim='seq')
+#    dss = dss.assign_coords(seq=idx_seq)
 
-    dss = xr.concat(dss, dim='seq')
-    dss = dss.assign_coords(seq=idx_seq)
-
-    return dss
+#    return dss
 
 
 def get_seq_mask(ds: xr.DataArray, seq_dim: str, seq_len: int):

@@ -145,11 +145,7 @@ class Classifier:
         v = get_xr_seq(v, 'time', [x for x in range(lcs_time_len)])
         v = v.dropna(dim='time', how='any')
         subtimes_len = self.subtimes_len
-        #####
-        ####
-        #####
-        # get seq mask does not seem to be working nicely
-        #v = get_seq_mask(v, 'time', lcs_time_len)
+
         shearless = False
 
         timestep = self.config['time_freq']
@@ -186,7 +182,7 @@ class Classifier:
             #          sys.stderr.write('\rdone {0:%}'.format(i/len(input_arrays)))
             else:
                 for i, input_array in enumerate(input_arrays):
-                    x_departure, y_departure = parcel_propagation(input_array.u, input_array.v, timestep, propdim='seq',
+                    x_departure, y_departure = parcel_propagation(input_array.u.copy(), input_array.v.copy(), timestep, propdim='seq',
                                                                   subtimes_len=subtimes_len)
                     x_list.append(x_departure)
                     y_list.append(y_departure)

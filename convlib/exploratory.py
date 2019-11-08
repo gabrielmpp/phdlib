@@ -11,14 +11,14 @@ from convlib.xr_tools import xy_to_latlon
 if __name__ == '__main__':
 
     print("*---- Reading arrays ----*")
-    u_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/viwve_ERA5_6hr_1990010100-1990123118.nc').isel(time=slice(None, 100))
-    v_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/viwvn_ERA5_6hr_1990010100-1990123118.nc').isel(time=slice(None, 100))
-    pr_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/pr_ERA5_6hr_1990010100-1990123118.nc').isel(time=slice(None, 100))
+    u_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/viwve_ERA5_6hr_1986010100-1986123118.nc').isel(time=slice(None, 100))
+    v_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/viwvn_ERA5_6hr_1986010100-1986123118.nc').isel(time=slice(None, 100))
+    pr_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/pr_ERA5_6hr_1986010100-1986123118.nc').isel(time=slice(None, 100))
 
-    tcwv_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/tcwv_ERA5_6hr_1990010100-1990123118.nc').isel(time=slice(None, 100))
-    array_full = xr.open_dataarray('/group_workspaces/jasmin4/upscale/gmpp/convzones/SL_repelling_1990_lcstimelen_1_v2.nc').isel(time=slice(None, 100))
+    tcwv_full = xr.open_dataarray('/gws/nopw/j04/primavera1/observations/ERA5/tcwv_ERA5_6hr_1986010100-1986123118.nc').isel(time=slice(None, 100))
+    array_full = xr.open_dataarray('/group_workspaces/jasmin4/upscale/gmpp/convzones/SL_repelling_1986_lcstimelen_1_v2.nc').isel(time=slice(None, 100))
     #   array_full.time.values = tcwv_full.time.values #TODO do it properly
-    #departures = xr.open_dataset('/group_workspaces/jasmin4/upscale/gmpp/convzones/SL_repelling_1990_departuretimelen_4_v2.nc').isel(time=slice(None, 100))
+    #departures = xr.open_dataset('/group_workspaces/jasmin4/upscale/gmpp/convzones/SL_repelling_1986_departuretimelen_4_v2.nc').isel(time=slice(None, 100))
     array_full = xr.apply_ufunc(lambda x: np.log(x), array_full ** 0.5)
     print("*---- Transforming arrays ----*")
     pr_full.coords['longitude'].values = (pr_full.coords['longitude'].values + 180) % 360 - 180

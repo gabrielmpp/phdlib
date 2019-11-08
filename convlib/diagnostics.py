@@ -15,7 +15,7 @@ from xrtools import xrumap as xru
 import pandas as pd
 from numba import jit
 import numba
-
+import convlib.xr_tools as xrtools
 
 def precip_fraction(region, years):
     if region == 'AITCZ':
@@ -131,9 +131,11 @@ def filter(region, years):
 @jit(parallel=True)
 def apply_binary_mask(times, dep_lat, dep_lon, mask, reverse=True):
     array_list = []
+    origins = xr.zeros_like(mask)
+
     for i in numba.prange(times.shape[0]):
         time = times[i]
-        dep_lat_, dep_lon_ = dep_lat.sel(time=time), dep_lon.sel(time=time)
+        dep_lat_, dep_lon_ = dep_lat.sel(time=time).copy(), dep_lon.sel(time=time).copy()
         dep_lat_nan = np.isnan(dep_lat_.values.flatten())
         dep_lon_nan = np.isnan(dep_lon_.values.flatten())
         assert (dep_lat_nan == dep_lon_nan).all(), "This should not happen!"
@@ -147,6 +149,7 @@ def apply_binary_mask(times, dep_lat, dep_lon, mask, reverse=True):
             landsea.append(
                 mask.sel(latitude=point[0], longitude=point[1], method='nearest').values
             )
+            origins.sel(latitude=point[0], longitude=point[1], method='nearest').values += 1
         vals = dep_lat_.values
         if reverse:
             vals[~np.isnan(vals)] = [0 if x == 1 else 1 for x in landsea]  # switching sea breeze to 1
@@ -154,7 +157,7 @@ def apply_binary_mask(times, dep_lat, dep_lon, mask, reverse=True):
             vals[~np.isnan(vals)] = [x for x in landsea]
         array_list.append(vals)
         print("Done time {}".format(time))
-    return array_list
+    return array_list, origins
 
 
 def add_basin_coord(array, MAG):
@@ -299,36 +302,41 @@ def seabreeze():
 
 
 if __name__ == '__main__':
+
     region = 'SACZ'
-    years = range(2000, 2001)
-    lcstimelen = 1
+    years = range(1985, 1990)
+    lcstimelen = 6
     MAG = xr.open_dataset('~/phdlib/convlib/data/xarray_mair_grid_basins.nc')
 
     departures = read_nc_files(region=region,
                                basepath='/group_workspaces/jasmin4/upscale/gmpp/convzones/',
                                filename='SL_repelling_{year}_departuretimelen' + f'_{lcstimelen}_v2.nc',
-                               year_range=years, reverseLat=True).isel(time=slice(None, None))
+                               year_range=years)
     ftle_array = read_nc_files(region=region,
                                basepath='/group_workspaces/jasmin4/upscale/gmpp/convzones/',
                                filename='SL_repelling_{year}_lcstimelen' + f'_{lcstimelen}_v2.nc',
-                               year_range=years).isel(time=slice(None, None))
+                               year_range=years)
     u = read_nc_files(region=region,
                       basepath='/gws/nopw/j04/primavera1/observations/ERA5/',
                       filename='viwve_ERA5_6hr_{year}010100-{year}123118.nc',
-                      year_range=years, transformLon=True, reverseLat=True)
+                      year_range=years, transformLon=True, reverseLat=True,
+                      time_slice_for_each_year=slice(lcstimelen-1, None))
     v = read_nc_files(region=region,
                       basepath='/gws/nopw/j04/primavera1/observations/ERA5/',
                       filename='viwvn_ERA5_6hr_{year}010100-{year}123118.nc',
-                      year_range=years, transformLon=True, reverseLat=True)
+                      year_range=years, transformLon=True, reverseLat=True,
+                      time_slice_for_each_year=slice(lcstimelen-1, None))
     tcwv = read_nc_files(region=region,
                       basepath='/gws/nopw/j04/primavera1/observations/ERA5/',
                       filename='tcwv_ERA5_6hr_{year}010100-{year}123118.nc',
-                      year_range=years, transformLon=True, reverseLat=True)
+                      year_range=years, transformLon=True, reverseLat=True,
+                      time_slice_for_each_year=slice(lcstimelen-1, None))
+    raise ValueError(" a ")
     ftle = ftle_array.sel(latitude=MAG.lat.values, longitude=MAG.lon.values, method='nearest')
     u = u.sel(latitude=MAG.lat.values, longitude=MAG.lon.values, method='nearest')
     v = v.sel(latitude=MAG.lat.values, longitude=MAG.lon.values, method='nearest')
     tcwv = tcwv.sel(latitude=MAG.lat.values, longitude=MAG.lon.values, method='nearest')
-    departures.time.values = tcwv.time.values
+    departures = departures.assign_coords(time=ftle.time.copy())
 
     departures = departures.sel(latitude=MAG.lat.values, longitude=MAG.lon.values, method='nearest')
     departures = add_basin_coord(MAG=MAG, array=departures)
@@ -338,19 +346,73 @@ if __name__ == '__main__':
     v = add_basin_coord(MAG=MAG, array=v)
     u = u/tcwv
     v = v/tcwv
-
-    avg_tiete = ftle.where(ftle.Tiete == 1).stack(points=['latitude', 'longitude']).sum('points')
-
-    summer = np.array([pd.to_datetime(x).month in [1, 2, 12] for x in ftle.time.values])
-    winter = np.array([pd.to_datetime(x).month in [5, 6, 7] for x in ftle.time.values])
-    avg_tiete_summer = avg_tiete.sel(time=avg_tiete.time[summer])
-    departures_tiete = departures.where(departures.Tiete == 1, drop=True)
-    departures_tiete_summer = departures_tiete.sel(time=departures_tiete.time[summer]).where(avg_tiete_summer > avg_tiete_summer.quantile(0.8))
-    dep_lon, dep_lat = departures_tiete_summer.x_departure, departures_tiete_summer.y_departure
     MAG = MAG.rename({'lat': 'latitude', 'lon': 'longitude'})
 
-    masked = apply_binary_mask(dep_lat.time.values, dep_lat=dep_lat, dep_lon=dep_lon, mask=MAG.amazon, reverse=False)
+    basin='Tiete'
+    basin_origin='amazon'
+    CZ=0
+    season='summer'
+    avg_basin = ftle.where(ftle[basin] == 1).stack(points=['latitude', 'longitude']).sum('points')
+    avg_basin = avg_basin.sel(time=departures.time)
+    if season == 'summer':
+        season_idxs = np.array([pd.to_datetime(x).month in [1, 2, 12] for x in departures.time.values])
+    elif season == 'winter':
+        season_idxs = np.array([pd.to_datetime(x).month in [5, 6, 7] for x in departures.time.values])
+
+
+    avg_basin_season = avg_basin.sel(time=avg_basin.time[season_idxs])
+    threshold = avg_basin_season.quantile(0.7)
+
+    departures_basin = departures.where(departures[basin] == 1, drop=True)
+    if CZ:
+        dep_lat = departures_basin.y_departure.sel(time=departures_basin.time[season_idxs]).where(avg_basin_season > threshold)
+        dep_lon = departures_basin.x_departure.sel(time=departures_basin.time[season_idxs]).where(avg_basin_season > threshold)
+        u_basin = u.where(avg_basin_season > threshold).mean('time')
+        v_basin = v.where(avg_basin_season > threshold).mean('time')
+    else:
+        dep_lat = departures_basin.y_departure.sel(time=departures_basin.time[season_idxs]).where(avg_basin_season < threshold)
+        dep_lon = departures_basin.x_departure.sel(time=departures_basin.time[season_idxs]).where(avg_basin_season < threshold)
+        u_basin = u.where(avg_basin_season < threshold).mean('time')
+        v_basin = v.where(avg_basin_season < threshold).mean('time')
+
+    masked, origins = apply_binary_mask(dep_lat.time.values.copy(), dep_lat=dep_lat.copy(), dep_lon=dep_lon.copy(),
+                                        mask=MAG[basin_origin], reverse=False)
+
     departs = dep_lat.copy(data=np.stack(masked))
+    ftle_basin = ftle.sel(time=dep_lat.time.values)
+
+    magnitude = (u_basin**2 + v_basin**2)**0.5
+
+    ### Plotting frequency of CZs that advected air parcels from the Amazon to Tiete
+    proj = ccrs.PlateCarree()
+    fig = plt.figure(figsize=[10, 10])
+    gs = gridspec.GridSpec(1, 1, width_ratios=[1])
+    ax = fig.add_subplot(gs[0, 0], projection=proj)
+    #ftle_basin.mean('time').sel(xrtools.createDomains('SACZ')).plot.contour(ax=ax, transform=ccrs.PlateCarree(),
+    #    cmap='autumn', levels=10, vmax=ftle.quantile(0.9))
+    #departs.mean('time').plot.contourf(ax=ax, transform=ccrs.PlateCarree(),
+    #    cmap='YlGnBu', levels=10, vmax=0.4, vmin=0)
+    (origins.where(origins!=0).sel(xrtools.createDomains('SACZ'))/departs.time.values.shape[0]).plot(ax=ax, transform=ccrs.PlateCarree(),
+        cmap='YlGnBu',  add_colorbar=True)
+    ax.coastlines()
+    MAG[basin].where(MAG[basin] == 1).where(MAG[basin] == 1, 0).sel(createDomains(region)).plot.contour(add_colorbar=False,
+                                                                                                 levels=[0.5],
+                                                                                                 cmap='Gray',
+                                                                                                 ax=ax)
+    MAG['amazon'].where(MAG['amazon'] == 1).where(MAG['amazon'] == 1, 0).sel(createDomains(region)).plot.contour(add_colorbar=False,
+                                                                                                 levels=[0.5],
+                                                                                                 cmap='Gray',
+                                                                                                 ax=ax)
+    #MAG.amazon.where(MAG.amazon == 1).where(MAG.amazon == 1, 0).sel(createDomains(region)).plot.contour(add_colorbar=False,
+    #                                                                                             levels=[0.5],
+    #                                                                                             cmap='Gray',
+    #
+    #                                                                                             ax=ax)
+    ax.streamplot(x=u_basin.longitude.values, y=v_basin.latitude.values, linewidth=0.3*magnitude.values,
+                  u=u_basin.values, v=v_basin.values, color='darkgrey',
+                  transform=ccrs.PlateCarree(), density=1)
+    plt.savefig(f'tempfigs/basins/freqs_depts_{basin}_{season}_{region}_lcstimelen_{lcstimelen}_CZ_{CZ}.pdf')
+
 
     proj = ccrs.PlateCarree()
     fig = plt.figure(figsize=[10, 10])
@@ -376,9 +438,11 @@ if __name__ == '__main__':
     fig.colorbar(strm.lines)
     ax.coastlines()
     plt.savefig('tempfigs/basins/sacz_amazon_tiete.pdf')
+
+
     plt.close()
-    ftle_summer = ftle.sel(time=ftle.time[summer])
-    ftle_winter = ftle.sel(time=ftle.time[winter])
+    ftle_summer = ftle.sel(time=ftle.time[season_idxs]).where(avg_basin_season > threshold)
+    ftle_winter = ftle.sel(time=ftle.time[season_idxs]).where(avg_basin_season > threshold)
 
     fig = plt.figure(figsize=[40, 20])
     gs = gridspec.GridSpec(1, 3, width_ratios=[1, 1, 0.05])
@@ -393,7 +457,7 @@ if __name__ == '__main__':
     for name, ax in axs.items():
         ax.set_title(name)
 
-    plot = ftle_summer.sel(createDomains(region)).where(avg_tiete > avg_tiete.quantile(0.8)).mean('time').plot.contourf(
+    plot = ftle_summer.sel(createDomains(region)).where(avg_basin > avg_basin.quantile(0.8)).mean('time').plot.contourf(
         cmap='YlGnBu', levels=10, add_colorbar=False, ax=axs['summer'],
         vmax=ftle.quantile(0.9))
 
@@ -404,7 +468,7 @@ if __name__ == '__main__':
 
     axs['summer'].coastlines(color='black')
 
-    ftle_winter.sel(createDomains(region)).where(avg_tiete > avg_tiete.quantile(0.8)).mean('time').plot.contourf(
+    ftle_winter.sel(createDomains(region)).where(avg_basin > avg_basin.quantile(0.8)).mean('time').plot.contourf(
         cmap='YlGnBu', levels=10, add_colorbar=False, ax=axs['winter'],
         vmax=ftle.quantile(0.9))
     axs['winter'].coastlines(color='black')

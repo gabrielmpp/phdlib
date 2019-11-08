@@ -1,6 +1,6 @@
 
 import xarray as xr
-from convlib.LCS import parcel_propagation
+from convlib.LCS_old import parcel_propagation
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
