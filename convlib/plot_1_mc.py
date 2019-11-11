@@ -43,9 +43,9 @@ if __name__ == '__main__':
     axs['24H'] = fig.add_subplot(gs[1, 0], projection=proj)
     axs['36H'] = fig.add_subplot(gs[1, 1], projection=proj)
     list_of_keys = ['6H', '12H', '24H', '36H']
-    time = array_list[1].time.values[0]
-    vmaxs = [2, 4, 8, 12]
-    time_scaling = np.array([6., 12., 24., 36.])
+    time = '2000-02-10T18:00:00'
+    vmaxs = [2, 2, 2, 2]
+    time_scaling = (3600/86400)*np.array([6., 12., 24., 36.])
     vmins = [0 for x in array_list]
 
     # Disable axis ticks
@@ -57,19 +57,20 @@ if __name__ == '__main__':
         ax.set_title(name)
 
     for i in range(len(lcstimelens)):
-        plot_array = xr.apply_ufunc(lambda x: time_scaling[i]**(-1) * np.log(x), array_list[i].sel(time=time) ** 0.5)
+        plot_array = xr.apply_ufunc(lambda x: time_scaling[i]**(-1) * np.log(x), array_list[i].sel(time=time)**0.5 )
 
         ax = axs[list_of_keys[i]]
 
-        plot = plot_array.plot.contourf(cmap='YlGnBu', levels=10, add_colorbar=False, ax=ax,
-                                                          vmax=vmaxs[i], vmin=vmins[i])
+        plot = plot_array.sel(latitude=slice(-60,10), longitude=slice(-90,-30)).plot.contourf(cmap='Blues',vmin=0, vmax=2, levels=30, add_colorbar=False, ax=ax,
+                                                          transform=ccrs.PlateCarree())
+        plot_array.sel(latitude=slice(-60,10), longitude=slice(-90,-30)).plot.contour(levels=[1], color='black',ax=ax)
         ax.coastlines()
 
     cbar_gs = gridspec.GridSpecFromSubplotSpec(1, 1, subplot_spec=gs[:, 2], wspace=2.5)
     cax = fig.add_subplot(cbar_gs[0])
     plt.colorbar(plot, cax)
 
-    plt.savefig(f'tempfigs/daily_figs/{time}.png')
+    plt.savefig(f'tempfigs/daily_figs/{time}.pdf')
     plt.close()
 
 
