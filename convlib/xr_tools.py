@@ -4,10 +4,12 @@ from warnings import warn
 import numpy as np
 import traceback
 import cmath
-
+import pandas as pd
 
 def createDomains(region, reverseLat=False):
-    if region == "SACZ":
+    if region == "SACZ_big":
+        domain = dict(latitude=[-40, 5], longitude=[-70, -20])
+    elif region == "SACZ":
         domain = dict(latitude=[-40, -5], longitude=[-62, -20])
     elif region == "SACZ_small":
         domain = dict(latitude=[-30, -20], longitude=[-50, -35])
@@ -36,9 +38,11 @@ def read_nc_files(region=None,
                   basepath="/group_workspaces/jasmin4/upscale/gmpp/convzones/",
                   filename="SL_repelling_{year}_lcstimelen_1.nc",
                   year_range=range(2000, 2008), transformLon=False, lonName="longitude", reverseLat=False,
-                  time_slice_for_each_year=slice(None, None)):
+                  time_slice_for_each_year=slice(None, None), season=None, lcstimelen=None, set_date=False,
+                  binary_mask=None, maskdims={'latitude': 'lat', 'longitude': 'lon'}):
     """
 
+    :param binary_mask:
     :param transformLon:
     :param lonName:
     :param region:
@@ -51,12 +55,32 @@ def read_nc_files(region=None,
     years = year_range
     file_list = []
 
-    def transform(x):
+    def transform(x, binary_mask):
         if transformLon:
             x.coords[lonName].values = \
                 (x.coords[lonName].values + 180) % 360 - 180
         if not isinstance(region, type(None)):
             x = x.sel(createDomains(region, reverseLat))
+        if not isinstance(season, type(None)):
+            if set_date:
+                initial_date = pd.Timestamp(f'{year}-01-01T00:00:00') + pd.Timedelta(str(lcstimelen*6 - 6) + 'H')
+                final_date = pd.Timestamp(f'{year}-12-31T18:00:00')
+                freq = '6H'
+                x = x.assign_coords(time=pd.date_range(initial_date, final_date, freq=freq))
+            if season == 'DJF':
+                season_idxs = np.array([pd.to_datetime(t).month in [1, 2, 12] for t in x.time.values])
+            elif season == 'JJA':
+                season_idxs = np.array([pd.to_datetime(t).month in [5, 6, 7] for t in x.time.values])
+            else:
+                raise ValueError(f"Season {season} not supported")
+            x = x.sel(time=x.time[season_idxs])
+        if isinstance(binary_mask, xr.DataArray):
+            binary_mask = binary_mask.where(binary_mask == 1, drop=True)
+            x = x.sel(latitude=binary_mask[maskdims['latitude']].values,
+                      longitude=binary_mask[maskdims['longitude']].values, method='nearest')
+            binary_mask = binary_mask.rename({maskdims['longitude']: 'longitude', maskdims['latitude']: 'latitude'})
+            x = x.where(binary_mask == 1, drop=True)
+
         return x
 
     for i, year in enumerate(years):
@@ -75,7 +99,7 @@ def read_nc_files(region=None,
                 break
 
         if isinstance(array, (xr.DataArray, xr.Dataset)):
-            file_list.append(transform(array).isel(time=time_slice_for_each_year))
+            file_list.append(transform(array, binary_mask).isel(time=time_slice_for_each_year))
         else:
             print(f'Year {year} unavailable')
     print(file_list)

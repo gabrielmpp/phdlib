@@ -16,7 +16,7 @@ import pandas as pd
 from numba import jit
 import numba
 import convlib.xr_tools as xrtools
-
+import datetime
 
 
 if __name__ == '__main__':
@@ -25,7 +25,7 @@ if __name__ == '__main__':
     years = range(2000, 2001)
     lcstimelen = 6
     MAG = xr.open_dataset('~/phdlib/convlib/data/xarray_mair_grid_basins.nc')
-    lcstimelens = [1, 2, 4, 6]
+    lcstimelens = [1, 4, 8, 16]
     array_list = []
     for lcstimelen in lcstimelens:
         array_list.append(read_nc_files(region=region,
@@ -34,30 +34,29 @@ if __name__ == '__main__':
                                year_range=years))
     proj = ccrs.PlateCarree()
 
-    fig = plt.figure(figsize=[40, 20])
+    fig = plt.figure(figsize=[25, 20])
     gs = gridspec.GridSpec(2, 3, width_ratios=[1, 1, 0.05])
     axs = dict()
 
     axs['6H'] = fig.add_subplot(gs[0, 0], projection=proj)
-    axs['12H'] = fig.add_subplot(gs[0, 1], projection=proj)
-    axs['24H'] = fig.add_subplot(gs[1, 0], projection=proj)
-    axs['36H'] = fig.add_subplot(gs[1, 1], projection=proj)
-    list_of_keys = ['6H', '12H', '24H', '36H']
-    time = '2000-02-10T18:00:00'
+    axs['1D'] = fig.add_subplot(gs[0, 1], projection=proj)
+    axs['2D'] = fig.add_subplot(gs[1, 0], projection=proj)
+    axs['4D'] = fig.add_subplot(gs[1, 1], projection=proj)
+    list_of_keys = ['6H', '1D', '2D', '4D']
+    time = '2000-02-10T12:00:00'
     vmaxs = [2, 2, 2, 2]
-    time_scaling = (3600/86400)*np.array([6., 12., 24., 36.])
+    time_scaling = (3600/86400)*6*np.array(lcstimelens)
     vmins = [0 for x in array_list]
 
     # Disable axis ticks
     for ax in axs.values():
         ax.tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
 
-    # Add titles
-    for name, ax in axs.items():
-        ax.set_title(name)
+
 
     for i in range(len(lcstimelens)):
-        plot_array = xr.apply_ufunc(lambda x: time_scaling[i]**(-1) * np.log(x), array_list[i].sel(time=time)**0.5 )
+        plot_array = xr.apply_ufunc(lambda x: time_scaling[i]**(-1) * np.log(x),
+                                    array_list[i].sel(time=pd.Timestamp(time)+pd.Timedelta(list_of_keys[i]))**0.5)
 
         ax = axs[list_of_keys[i]]
 
@@ -66,11 +65,15 @@ if __name__ == '__main__':
         plot_array.sel(latitude=slice(-60,10), longitude=slice(-90,-30)).plot.contour(levels=[1], color='black',ax=ax)
         ax.coastlines()
 
+    # Add titles
+    for name, ax in axs.items():
+        ax.set_title(name)
     cbar_gs = gridspec.GridSpecFromSubplotSpec(1, 1, subplot_spec=gs[:, 2], wspace=2.5)
     cax = fig.add_subplot(cbar_gs[0])
     plt.colorbar(plot, cax)
+    plt.tight_layout()
 
-    plt.savefig(f'tempfigs/daily_figs/{time}.pdf')
+    plt.savefig(f'tempfigs/daily_figs/{time}.png')
     plt.close()
 
 

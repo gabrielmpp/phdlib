@@ -82,10 +82,15 @@ if __name__ == '__main__':
     region = "SACZ_small"
     lcs_time_len = 1
 
-    arr = read_nc_files(region=region,
+    arr1 = read_nc_files(region=region,
                         basepath='/group_workspaces/jasmin4/upscale/gmpp/convzones/',
-                        filename='SL_repelling_{year}' + f'_lcstimelen_{lcs_time_len}_v2.nc',
+                        filename='SL_repelling_{year}' + f'_lcstimelen_1_v2.nc',
                         year_range=range(1990, 2000))
+    arr4 = read_nc_files(region=region,
+                        basepath='/group_workspaces/jasmin4/upscale/gmpp/convzones/',
+                        filename='SL_repelling_{year}' + f'_lcstimelen_4_v2.nc',
+                        year_range=range(1990, 2000))
+
     # arr = xr.open_dataarray('/home/users/gmpp/out/SL_repelling_1980_1998.nc')
     sel_hour = 0
     hours = [pd.to_datetime(x).hour for x in arr.time.values]
