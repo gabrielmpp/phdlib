@@ -12,18 +12,18 @@ from convlib.diagnostics import add_basin_coord
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.gridspec as gridspec
 from convlib.xr_tools import xy_to_latlon
-import cartopy.feature as cfeature
+import cartopy.feature as cfeatur
 from xrtools import xrumap as xru
 import pandas as pd
 from numba import jit
 import numba
 import convlib.xr_tools as xrtools
-
+import os
 if __name__ == '__main__':
     region = 'SACZ_big'
-    years = range(2000, 2005)
-    lcstimelen = 8
-    basin = 'Tiete'
+    years = range(1995, 2005)
+    lcstimelen = 16
+    basin = 'Uruguai'
     season = 'DJF'
 
     basin_origin='amazon'
@@ -127,7 +127,7 @@ if __name__ == '__main__':
         np.stack([Tiete_xs.flatten(), Tiete_ys.flatten(), np.zeros_like(Tiete_xs).flatten()], axis=1)))[:, 0]
     pc_Tiete_border2 = pca.transform(scaler.transform(
         np.stack([Tiete_xs.flatten(), Tiete_ys.flatten(), np.zeros_like(Tiete_xs).flatten()], axis=1)))[:, 1]
-    pc_Tiete_border3= pca.transform(scaler.transform(
+    pc_Tiete_border3 = pca.transform(scaler.transform(
         np.stack([Tiete_xs.flatten(), Tiete_ys.flatten(), np.zeros_like(Tiete_xs).flatten()], axis=1)))[:, 2]
 
     plt.figure(figsize=[10, 10])
@@ -141,7 +141,7 @@ if __name__ == '__main__':
     plt.ylabel('PC2')
     plt.xlabel('PC1')
     plt.colorbar(pca_plot)
-    plt.savefig('tempfigs/diagnostics/PCA_1_2.pdf')
+    plt.savefig(f'tempfigs/diagnostics/PCA_1_2_lcstimelen{lcstimelen}.pdf')
     plt.close()
 
     plt.figure(figsize=[10, 10])
@@ -205,21 +205,14 @@ if __name__ == '__main__':
         fig.colorbar(c)
         #ax.plot(x, y, z, lw=0.3, linestyle='-', alpha=0.4,
         #                 color='white')
-        x = departures.x_departure.groupby('time').mean().values.flatten()
-        y = departures.y_departure.groupby('time').mean().values.flatten()
-        z = 0
-        #ax.scatter(x, y, z, alpha=0.7, cmap='RdBu', c=colors, s=(colors**1.4)*20)
-
-
-
 
         ax.grid(color='black')
         x, y = np.meshgrid(MAG['amazon'].longitude.values, MAG['amazon'].latitude.values)
 
         ax.contour(x, y,
-                MAG['amazon'].values-1,  levels=[-0.00009,1.00001], linewidths=0.8)
+                MAG['amazon'].values-1,  levels=[-0.00009, 1.00001], linewidths=0.8)
         ax.contour(x, y,
-                MAG['Tiete'].values-1, levels=[-0.00009,1.00001], linewidths=0.8)
+                MAG['Tiete'].values-1, levels=[-0.00009, 1.00001], linewidths=0.8)
         countries = regionmask.defined_regions.natural_earth.countries_110
         mask = countries.mask(np.arange(-70, -20), np.arange(-45, 5), wrap_lon=False)
         #mask = countries.mask(MAG.rename({'latitude': 'lat','longitude':'lon'}))
@@ -250,20 +243,7 @@ if __name__ == '__main__':
         fig = plt.figure(figsize=[20, 20])
         plt.style.use('default')
 
-        ax = fig.add_subplot(111)
-        [t.set_va('center') for t in ax.get_yticklabels()]
-        [t.set_ha('left') for t in ax.get_yticklabels()]
-        [t.set_va('center') for t in ax.get_xticklabels()]
-        [t.set_ha('right') for t in ax.get_xticklabels()]
-
-
-        ax.xaxis._axinfo['tick']['inward_factor'] = 0
-        ax.xaxis._axinfo['tick']['outward_factor'] = 0.8
-        ax.yaxis._axinfo['tick']['inward_factor'] = 0
-        ax.yaxis._axinfo['tick']['outward_factor'] = 0.8
-
-        ax.xaxis.set_major_locator(MultipleLocator(5))
-        ax.yaxis.set_major_locator(MultipleLocator(5))
+        ax = fig.add_subplot(111, projection=ccrs.PlateCarree())
 
         # make simple, bare axis lines through space:
         p1 = scaler.inverse_transform(pca.inverse_transform([[min(result['PCA0']), 0, 0], [max(result['PCA0']), 0, 0]]))
@@ -277,7 +257,8 @@ if __name__ == '__main__':
         ax.plot(xs=p3[:, 0], ys=p3[:, 1], color='black')
         ax.text(p3[0, 0], p3[0, 1], "PC3 = " + str(round(pca.explained_variance_ratio_[2]*100)) + "%")
 
-        c = ax.scatter(x, y, alpha=0.7, cmap='Blues', c=colors, s=(colors**1.7)*20)
+        c = ax.scatter(x, y, alpha=0.9, cmap='plasma', c=colors, s=(colors**1.7)*35,
+                       transform=ccrs.PlateCarree(), edgecolors='black')
         fig.colorbar(c)
         #ax.plot(x, y, z, lw=0.3, linestyle='-', alpha=0.4,
         #                 color='white')
@@ -286,22 +267,18 @@ if __name__ == '__main__':
         x, y = np.meshgrid(MAG['amazon'].longitude.values, MAG['amazon'].latitude.values)
 
         ax.contour(x, y,
-                MAG['amazon'].values-1,  levels=[-0.00009,1.00001], linewidths=0.8)
+                MAG['amazon'].values-1,  levels=[-0.00009,1.00001], linewidths=0.8,
+                   colors=['white'], transform=ccrs.PlateCarree())
         ax.contour(x, y,
-                MAG['Tiete'].values-1, levels=[-0.00009,1.00001], linewidths=0.8)
-        countries = regionmask.defined_regions.natural_earth.countries_110
-        mask = countries.mask(np.arange(-70, -20), np.arange(-45, 5), wrap_lon=False)
-        #mask = countries.mask(MAG.rename({'latitude': 'lat','longitude':'lon'}))
-        mask = mask.where(np.isnan(mask), 1).where(~np.isnan(mask), 0) - 1
-        x, y = np.meshgrid(mask.lon.values, mask.lat.values)
-        ax.contour(x, y, mask.values, colors='black', levels=[-0.00009,1.00001], linewidths=0.8, linestyles='solid')
+                MAG['Tiete'].values-1, levels=[-0.00009,1.00001], linewidths=0.8,
+                colors=['white'], transform=ccrs.PlateCarree())
+
+        ax.coastlines(color='black')
+        os.environ["CARTOPY_USER_BACKGROUNDS"] = "/home/users/gmpp/phdlib/convlib/aux_files/"
+        ax.background_img(name='BM', resolution='high')
         ax.set_xlim(-80, -30)
         ax.set_ylim(-45, 10)
-        ax.grid(False)
-        ax.xaxis.pane.set_edgecolor('black')
-        ax.yaxis.pane.set_edgecolor('black')
-        ax.xaxis.pane.fill = False
-        ax.yaxis.pane.fill = False
         ax.set_xlabel('Longitude')
         ax.set_ylabel('Latitude')
-        plt.savefig('tempfigs/2dplots/2dplot.png')
+        plt.savefig(f'tempfigs/2dplots/2dplot_lcstimelen{lcstimelen}.pdf')
+        plt.close()
