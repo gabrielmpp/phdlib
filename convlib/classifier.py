@@ -6,10 +6,10 @@ import sys
 from typing import Optional
 import numpy as np
 import concurrent.futures
-from convlib.xr_tools import get_seq_mask, get_xr_seq
+from xr_tools import get_seq_mask, get_xr_seq
 
 
-config = {
+config_jasmin = {
     'data_basepath': '/media/gabriel/gab_hd/data/sample_data/',
     'u_filename': 'viwve_ERA5_6hr_2000010100-2000123118.nc',
     'v_filename': 'viwvn_ERA5_6hr_2000010100-2000123118.nc',
@@ -22,6 +22,22 @@ config = {
                    # 'longitude': slice(-55, -35)
                     }
     }
+
+config_local = {
+    'data_basepath': '/home/gab/phd/data/ERA5/',
+    'u_filename': 'ERA5viwve_ERA5_6hr_2020010100-2020123118.nc',
+    'v_filename': 'ERA5viwvn_ERA5_6hr_2020010100-2020123118.nc',
+    'tcwv_filename': 'ERA5tcwv_ERA5_6hr_2020010100-2020123118.nc',
+    'time_freq': '6H',
+    'array_slice': {'time': slice(None, None),
+                   'latitude': slice(30, -80),
+                   'longitude': slice(-140, -1),
+                   # 'latitude': slice(-20, -35),
+                   # 'longitude': slice(-55, -35)
+                    }
+    }
+
+config = config_local
 
 
 class Classifier:
@@ -195,7 +211,7 @@ class Classifier:
         else:
             array_list = []
             if parallel:
-                with concurrent.futures.ProcessPoolExecutor(max_workers=10) as executor:
+                with concurrent.futures.ProcessPoolExecutor(max_workers=4) as executor:
                     for i, resulting_array in enumerate(executor.map(lcs, input_arrays)):
                         array_list.append(resulting_array)
                         sys.stderr.write('\rdone {0:%}'.format(i/len(input_arrays)))
@@ -218,7 +234,7 @@ class Classifier:
 if __name__ == '__main__':
 
     classifier = Classifier()
-    parallel = True
+    parallel = False
     find_departure = False
     running_on = str(sys.argv[1])
     lcs_type = str(sys.argv[2])
@@ -229,9 +245,9 @@ if __name__ == '__main__':
     #lcs_type = 'repelling'
     #year = 2000
     config['array_slice']['time'] = slice(f'{year}-01-01T00:00:00', f'{year}-12-31T18:00:00')
-    config['u_filename'] = f'viwve_ERA5_6hr_{year}010100-{year}123118.nc'
-    config['v_filename'] = f'viwvn_ERA5_6hr_{year}010100-{year}123118.nc'
-    config['tcwv_filename'] = f'tcwv_ERA5_6hr_{year}010100-{year}123118.nc'
+    config['u_filename'] = f'ERA5viwve_ERA5_6hr_{year}010100-{year}123118.nc'
+    config['v_filename'] = f'ERA5viwvn_ERA5_6hr_{year}010100-{year}123118.nc'
+    config['tcwv_filename'] = f'ERA5tcwv_ERA5_6hr_{year}010100-{year}123118.nc'
 
 
     #running_on =''
@@ -241,7 +257,7 @@ if __name__ == '__main__':
         outpath = '/group_workspaces/jasmin4/upscale/gmpp/convzones/'
         #outpath = '/home/users/gmpp/'
     else:
-        outpath = 'data/'
+        outpath = '/home/gab/phd/data/FTLE_ERA5/'
 
     classified_array1 = classifier(config, method='lagrangian', lcs_type=lcs_type, lcs_time_len=lcs_time_len,
                                    find_departure=find_departure, parallel=parallel, subtimes_len=subtimes_len)

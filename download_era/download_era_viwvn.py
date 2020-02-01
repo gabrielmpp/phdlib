@@ -1,11 +1,12 @@
 # Import cdsapi
 import cdsapi
 import sys
+import config
 if __name__ == '__main__':
     # Open a new Client instance
     c = cdsapi.Client()
     year = str(sys.argv[1])
-    outpath = '/gws/nopw/j04/primavera1/observations/ERA5/'
+    outpath = config.outpath
     #outpath = '/group_workspaces/jasmin4/upscale/ERA5/'
     # Send your request (download data)
     c.retrieve('reanalysis-era5-single-levels', {
