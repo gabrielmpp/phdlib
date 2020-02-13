@@ -234,17 +234,17 @@ class Classifier:
 if __name__ == '__main__':
 
     classifier = Classifier()
-    parallel = False
+    parallel = True
     find_departure = False
-    running_on = str(sys.argv[1])
-    lcs_type = str(sys.argv[2])
-    year = str(sys.argv[3])
-    lcs_time_len = int(sys.argv[4]) # * 6 hours intervals
+    running_on = 'local' #str(sys.argv[1]
+    lcs_type = 'attracting'#str(sys.argv[2])
+    year = '2020' #str(sys.argv[3])
+    lcs_time_len = 16 #int(sys.argv[4]) # * 6 hours intervals
     subtimes_len = 1
     #running_on = ''
     #lcs_type = 'repelling'
     #year = 2000
-    config['array_slice']['time'] = slice(f'{year}-01-01T00:00:00', f'{year}-12-31T18:00:00')
+    config['array_slice']['time'] = slice(f'{year}-01-20T00:00:00', f'{year}-12-27T18:00:00')
     config['u_filename'] = f'ERA5viwve_ERA5_6hr_{year}010100-{year}123118.nc'
     config['v_filename'] = f'ERA5viwvn_ERA5_6hr_{year}010100-{year}123118.nc'
     config['tcwv_filename'] = f'ERA5tcwv_ERA5_6hr_{year}010100-{year}123118.nc'

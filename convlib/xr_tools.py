@@ -6,6 +6,34 @@ import traceback
 import cmath
 import pandas as pd
 
+
+def add_basin_coord(array, MAG):
+    basin_names = list(MAG.coords.keys())
+    basin_avg = {}
+    for basin in basin_names:
+        array.coords[basin] = (("latitude", "longitude"), MAG.coords[basin].values)
+
+    return array
+
+
+def get_xr_seq(ds, commun_sample_dim, idx_seq):
+    """
+    Internal function that create the sequence dimension
+    :param ds:
+    :param commun_sample_dim:
+    :param idx_seq:
+    :return:
+    """
+    dss = []
+    for idx in idx_seq:
+        dss.append(ds.shift({commun_sample_dim: -idx}))
+
+    dss = xr.concat(dss, dim='seq')
+    dss = dss.assign_coords(seq=idx_seq)
+
+    return dss
+
+
 def createDomains(region, reverseLat=False):
     if region == "SACZ_big":
         domain = dict(latitude=[-40, 5], longitude=[-70, -20])
@@ -37,7 +65,7 @@ def createDomains(region, reverseLat=False):
 def read_nc_files(region=None,
                   basepath="/group_workspaces/jasmin4/upscale/gmpp/convzones/",
                   filename="SL_repelling_{year}_lcstimelen_1.nc",
-                  year_range=range(2000, 2008), transformLon=False, lonName="longitude", reverseLat=False,
+                  year_range=range(2000, 2008), transformLon=False, lonName="longitude", reverseLat=False, reverseLon=False,
                   time_slice_for_each_year=slice(None, None), season=None, lcstimelen=None, set_date=False,
                   binary_mask=None, maskdims={'latitude': 'lat', 'longitude': 'lon'}):
     """
@@ -59,8 +87,10 @@ def read_nc_files(region=None,
         if transformLon:
             x.coords[lonName].values = \
                 (x.coords[lonName].values + 180) % 360 - 180
-        if not isinstance(region, type(None)):
+        if not isinstance(region, (type(None), dict)):
             x = x.sel(createDomains(region, reverseLat))
+        elif isinstance(region, type(dict)):
+            x = x.sel(region)
         if not isinstance(season, type(None)):
             if set_date:
                 initial_date = pd.Timestamp(f'{year}-01-01T00:00:00') + pd.Timedelta(str(lcstimelen*6 - 6) + 'H')
