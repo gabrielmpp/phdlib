@@ -2,7 +2,7 @@ import subprocess
 
 if __name__ == '__main__':
     logs_path = '/home/users/gmpp/logs/'
-    python = '/home/users/gmpp/miniconda2/envs/phd37/bin/python'
+        python = '/home/users/gmpp/miniconda2/envs/phd37/bin/python'
     script_path = '/home/users/gmpp/phdlib/convlib/classifier.py'
     lcs_time_lens = [16]
     years = [x for x in range(1980, 2010)]

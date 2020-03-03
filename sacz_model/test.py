@@ -2,105 +2,122 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-
-
-dt = 3600
-timestamps = pd.date_range("2019-01-01T00:00:00", "2021-12-31T00:00:00", freq=str(dt) + 's')
-A = np.zeros([len(timestamps)])
-P = np.zeros([len(timestamps)])
-Q = np.zeros([len(timestamps)])
-dphi = np.zeros([len(timestamps)])
-
-v_synoptic = np.zeros([len(timestamps)])
-
-A[0] = 5
-A_amazon = 10
-V_amazon = np.zeros([len(timestamps)])
-dx = 2e6
-E = 0
-
-activation = 'linear'
-
-def V_Monsoon(t):
-    """
-
-    :param t: timestep index
-    :return: Mass flux from the Amazon
-    """
-    amplitude = 7
-    half_year = 0.5 * 365 * 86400
-    return 10 + amplitude * np.cos(t*dt*np.pi/half_year)
-
-
-def V_synoptic(t, dphi):
-    """
-
-    :param t: timestep index
-    :return: Mass flux from the Amazon
-    """
-    amplitude = dphi
-    half_period = 0.5 * 7 * 86400
-    return 5 + amplitude * np.cos(t*dt*np.pi/half_period)
-
-
-
-def sigmoid(x):
-    return 1 / (1 + np.exp(-0.01 * x))
-
-
-def precip_param(A, Q, threshold=4.5, alpha=1):
-    if A > threshold:
-        return Q
-    else:
-        return 0
-
-
-def linear(x): return x
-
-
-funcs = dict(sigmoid=sigmoid,
-             ReLU=precip_param,
-             linear=linear)
-f = funcs[activation]
-coupling = 1000
-for k, date in enumerate(timestamps[1:]):
-    rossby_period = 0.5 * 7 * 86400
-
-    #P[k+1] = np.random.gamma([1])*f(A[k]) / 86400
-    P[k] = 0.5 * f(A[k]) / 86400
-    V_amazon[k] = V_Monsoon(k)
-    V = V_amazon[k] + v_synoptic[k]/2
-    Q[k] = - (V_SP * A[k] - V * A_amazon) / dx
-    print(coupling * P[k])
-    #v_synoptic[k+1] =  (coupling * P[k])+v_synoptic[k] + (0.1 ) * np.cos(k * dt * np.pi / rossby_period)
-    v_synoptic[k+1] = v_synoptic[k] + (coupling * P[k] + 0.1) * np.sin(k * dt * np.pi / rossby_period)
-    A[k + 1] = max(A[k] + dt * (E - P[k] + Q[k]), 0)
-
+from pathlib import Path
 import xarray as xr
+import cartopy.crs as ccrs
 
-A_xr = xr.DataArray(A, dims=['time'], coords=dict(time=timestamps))
-P_xr = xr.DataArray(P, dims=['time'], coords=dict(time=timestamps))
-V_xr = xr.DataArray(V_amazon + v_synoptic, dims=['time'], coords=dict(time=timestamps))
-Q_xr = xr.DataArray(Q, dims=['time'], coords=dict(time=timestamps))
+def latlonsel(array, lat, lon, latname='lat', lonname='lon'):
+    """
+    Function to crop array based on lat and lon intervals given by slice or list.
+    This function is able to crop across cyclic boundaries.
 
-A_xr.isel(time=slice(0, None)).plot()
-(P_xr * 86400).isel(time=slice(0, None)).plot()
-(Q_xr * 86400).isel(time=slice(0, None)).plot()
-plt.legend(['A', 'P', 'Q'])
-plt.show()
+    :param array: xarray.Datarray
+    :param lat: list or slice (min, max)
+    :param lon: list or slice(min, max)
+    :return: cropped array
+    """
+    assert latname in array.coords, f"Coord. {latname} not present in array"
+    assert lonname in array.coords, f"Coord. {lonname} not present in array"
 
-A_xr.sel(time='2019-07').plot()
-(P_xr * 86400).sel(time='2019-07').plot()
-(Q_xr * 86400).sel(time='2019-07').plot()
-plt.legend(['A', 'P', 'Q'])
-plt.show()
-A_xr.groupby('time.month').mean().plot()
-(Q_xr * 86400).groupby('time.month').mean().plot()
 
-(P_xr * 86400).groupby('time.month').mean().plot()
-plt.legend(['A', 'Q', 'P'])
-plt.show()
-plt.plot(A, Q)
-plt.show()
+    if isinstance(lat, slice):
+        lat1 = lat.start
+        lat2 = lat.stop
+    elif isinstance(lat, list):
+        lat1 = lat[0]
+        lat2 = lat[1]
+    if isinstance(lon, slice):
+        lon1 = lon.start
+        lon2 = lon.stop
+    elif isinstance(lon, list):
+        lon1 = lat[0]
+        lon2 = lat[1]
 
-timestamps = pd.date_range("2019-01-01T00:00:00", "2019-12-31T00:00:00", freq=str(dt) + 's')
+    lonmask = (array[lonname] < lon2) & (array[lonname] > lon1)
+    latmask = (array[latname] < lat2) & (array[latname] > lat1)
+    array = array.where(lonmask, drop=True).where(latmask, drop=True)
+    return array
+
+
+infolder_path = Path('~/phd/data/FTLE_ERA5/')
+era5path = Path('/gws/nopw/j04/primavera1/observations/ERA5/')
+ftlepath = Path('/group_workspaces/jasmin4/upscale/gmpp/convzones/')
+years = range(1981, 2001)
+month = '01'
+ftles = list()
+precips = list()
+for k, year in enumerate(years):
+    print(f"Reading year {year}")
+
+    ftles.append(
+        xr.open_dataarray(
+            ftlepath / 'SL_repelling_{}_lcstimelen_16_v2.nc'.format(str(year))
+        ).sel(latitude=slice(None, 10), time='{yr}-{mn}'.format(yr=str(year), mn=month))
+    )
+    precip_temp = xr.open_dataarray(
+        era5path     / 'pr_ERA5_6hr_{yr}010100-{yr}123118.nc'.format(yr=str(year)))
+    precip_temp = precip_temp.assign_coords(longitude=(precip_temp.coords['longitude'].values + 180) % 360 - 180)
+    precip_temp = precip_temp.sel(time=ftles[k].time, method='nearest')
+    precip_temp = latlonsel(precip_temp, lat=slice(ftles[k].latitude.min().values, ftles[k].latitude.max().values),
+                       lon=slice(ftles[k].longitude.min().values, ftles[k].longitude.max().values), latname='latitude',
+                       lonname='longitude')
+    precip_temp = precip_temp.sel(latitude=ftles[k].latitude, longitude=ftles[k].longitude, method='nearest')
+    precip_temp = precip_temp.assign_coords(latitude=ftles[k].latitude, longitude=ftles[k].longitude)
+    precips.append(precip_temp)
+
+print("start concat")
+precip = xr.concat(precips, dim='time')
+print("done precip")
+ftle = xr.concat(ftles, dim='time')
+print("done ftle")
+print("done concat")
+
+threshold = ftle.quantile(0.9)
+freq = ftle.where(ftle > threshold, 0)
+freq = freq.where(ftle <= threshold, 1)
+freq = freq.mean('time')
+print(freq)
+
+qs = precip.where(ftle > threshold, drop=True).quantile(0.12, dim='time')
+fig = plt.figure(figsize=[12, 10])
+ax = fig.add_subplot(111, projection=ccrs.PlateCarree())
+qs.plot(vmax=0.00005, cmap="viridis",vmin=0, ax=ax, add_colorbar=False)
+FRQ = freq.plot.contour(cmap='Reds', ax=ax, levels=np.arange(0, 1, 0.12))
+ax.clabel(FRQ, inline=1, fontsize=10)
+ax.coastlines()
+plt.savefig(f'/home/users/gmpp/quantiles_cz_month_{month}.png')
+plt.close()
+
+fig = plt.figure(figsize=[12, 10])
+ax = fig.add_subplot(111, projection=ccrs.PlateCarree())
+precip.quantile(0.1, dim='time').plot(ax=ax, vmin=0,add_colorbar=False, vmax=0.0001)
+FRQ = freq.plot.contour(cmap='Reds', ax=ax, levels=np.arange(0, 1, 0.12))
+ax.clabel(FRQ, inline=1, fontsize=10)
+ax.coastlines()
+plt.savefig(f'/home/users/gmpp/quantiles_precip_{month}.png')
+plt.close()
+
+# untested!
+# untested!
+def covariance(x, y, dim=None):
+    valid_values = x.notnull() & y.notnull()
+    valid_count = valid_values.sum(dim)
+
+    demeaned_x = (x - x.mean(dim)).fillna(0)
+    demeaned_y = (y - y.mean(dim)).fillna(0)
+
+    return xr.dot(demeaned_x, demeaned_y, dims=dim) / valid_count
+
+
+def correlation(x, y, dim=None):
+    # dim should default to the intersection of x.dims and y.dims
+    return covariance(x, y, dim) / (x.std(dim) * y.std(dim))
+
+
+corr = correlation(ftle, precip, 'time')
+fig = plt.figure(figsize=[12, 10])
+ax = fig.add_subplot(111, projection=ccrs.PlateCarree())
+corr.plot(ax=ax, cmap='viridis', vmin=0, vmax=0.2)
+ax.coastlines()
+plt.savefig(f'/home/users/gmpp/correlation_ftle_precip_{month}.png')
+plt.close()
