@@ -5,7 +5,15 @@ import pandas as pd
 import numpy as np
 from phdlib.utils.xrumap import autoencoder as xru
 
-def latlonsel(array, array_like = None, lat = None, lon = None, latname='lat', lonname='lon'):
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+
+states_provinces = cfeature.NaturalEarthFeature(
+    category='cultural',
+    name='admin_1_states_provinces_lines',
+    scale='50m',
+    facecolor='none')
+def latlonsel(array, array_like=None, lat=None, lon=None, latname='lat', lonname='lon'):
     """
     Function to crop array based on lat and lon intervals given by slice or list.
     This function is able to crop across cyclic boundaries.
@@ -42,13 +50,14 @@ def latlonsel(array, array_like = None, lat = None, lon = None, latname='lat', l
     array = array.where(latmask, drop=True)
     return array
 
+
 def model_analysis():
     ds = xr.open_dataset('data/ds.nc')
 
     array = ds.P.resample(time='1D').sum()
     print(array)
     array = array.stack(dict(stacked=['coupling', 'A_amazon']))
-    #array = dict(array.groupby('time.season'))['DJF']
+    # array = dict(array.groupby('time.season'))['DJF']
     groups = list(array.groupby('stacked'))
     power_list = []
     for label, group in groups:
@@ -58,26 +67,27 @@ def model_analysis():
     array = xr.concat(power_list, dim=array.stacked)
     array = array.unstack()
     array = xr.apply_ufunc(lambda x: np.log(x), array)
-    array = array.assign_coords(freq=1/array.freq).rename(dict(freq='period'))
+    array = array.assign_coords(freq=1 / array.freq).rename(dict(freq='period'))
     # array = array.coarsen(period=Z, boundary='trim').mean()
     array.sel(A_amazon=10, period=slice(15, 2)).plot.contourf(levels=30, vmin=-26, vmax=-20, cmap='plasma')
     plt.show()
     array.sel(A_amazon=7, period=slice(15, 2)).plot.contourf(levels=30, vmin=-26, vmax=-20, cmap='plasma')
     plt.show()
-    (array.sel(A_amazon=10, period=slice(15, 2)) - array.sel(A_amazon=7, period=slice(15, 2))).plot.contourf(levels=30,vmin=-3.5, vmax=3.5, cmap='RdBu')
+    (array.sel(A_amazon=10, period=slice(15, 2)) - array.sel(A_amazon=7, period=slice(15, 2))).plot.contourf(levels=30,
+                                                                                                             vmin=-3.5,
+                                                                                                             vmax=3.5,
+                                                                                                             cmap='RdBu')
     plt.show()
     array.sel(A_amazon=10, period=4, method='nearest').plot.line(x='coupling')
     plt.show()
 
-
     # qqplot
-
 
     ds = xr.open_dataset('data/ds.nc')
     idxs = np.array([pd.to_datetime(t).month in [1, 2, 12] for t in ds.time.values])
     ds = ds.sel(time=idxs)
-    array = ds.P.resample(time='1D').sum()* 86400
-    arrayQ = ds.Q.resample(time='1D').sum()#* 86400
+    array = ds.P.resample(time='1D').sum() * 86400
+    arrayQ = ds.Q.resample(time='1D').sum()  # * 86400
     array_CZ = array.where(arrayQ > arrayQ.quantile(0.8), drop=True)
     quants = np.arange(0, 1, 0.02)
     quant_cz = []
@@ -86,42 +96,50 @@ def model_analysis():
         quant_cz.append(array_CZ.sel(coupling=4).quantile(quant).values)
         quant_nocz.append(array.sel(coupling=4).quantile(quant).values)
 
-
-
     plt.style.use('seaborn')
     plt.plot([0, 8], [0, 8], color='black', linestyle='dashed')
 
     plt.scatter(y=quant_cz, x=quant_nocz)
     plt.show()
 
-def hilbert_spectrum(emd_array, out_type='period'):
-    from scipy.signal import hilbert
 
-    from joblib import Parallel, delayed
+def assert_time_is_last_entry(da):
+    dims = list(da.dims)
+    dims.remove('time')
+    dims.append('time')
+    return da.transpose(*dims)
+
+
+def hilbert_spectrum(emd_array, out_type='period', apply_gauss=False):
+    from scipy.signal import hilbert
+    from scipy.ndimage import gaussian_filter
     def run_hilbert(group):
         analytic_signal = hilbert(group)
         phase = np.unwrap(np.angle(analytic_signal))
         #  freq = 4 * np.diff(phase) / (2 * np.pi)
         return phase
 
-    dask_array = emd_array.chunk(dict(encoded_dims=1, lat=1, lon=1))
-    temp_array = dask_array.stack({'stacked': ['encoded_dims', 'lat', 'lon']})
-    temp_array = xr.apply_ufunc(lambda x: run_hilbert(x),
-                                temp_array.groupby('stacked'),
-                                dask='allowed',
-                                )
-    temp_array =
-    temp_array = temp_array.unstack().load()
+    # dask_array = emd_array.chunk(dict(encoded_dims=1, lat=1, lon=1))
+    # temp_array = dask_array.stack({'stacked': ['encoded_dims', 'lat', 'lon']})
+    emd_array = assert_time_is_last_entry(emd_array)
+    phase = xr.apply_ufunc(lambda x: run_hilbert(x),
+                           emd_array,
+                           )
+    freq = 4 * phase.diff('time') / (2 * np.pi)
+    freq = freq.unstack().load()
+
     if out_type == 'freq':
-        return temp_array
+        return freq
     elif out_type == 'period':
-        periods_array = np.linspace(10, 0.5, 10)
+        # periods_array = np.linspace(20, 4, 30)
+        # periods_array = np.array([30, 25, 20, 15, 10, 5, 1])
+        periods_array = np.array([90 ,30 ,15, 8,4, 2, 0.5])
         k = 0
         periods = []
 
-        while k < (periods_array.shape[0] - 1): # TODO make it faster
-            mask = (temp_array > 1 / periods_array[k]) & (temp_array < 1 / periods_array[k + 1])
-            periods.append(temp_array.where(mask).sum('encoded_dims'))
+        while k < (periods_array.shape[0] - 1):  # TODO make it faster
+            mask = (freq > 1 / periods_array[k]) & (freq < 1 / periods_array[k + 1])
+            periods.append(emd_array.isel(time=slice(None, -1)).where(mask).sum('encoded_dims'))
             k += 1
             print(k)
 
@@ -132,14 +150,137 @@ def hilbert_spectrum(emd_array, out_type='period'):
     else:
         raise ValueError(f'out_type {out_type} not supported.')
 
-spc = xr.open_dataarray('~/phd/data/prec_emd_for_mair.nc')
-spc = spc.isel(lat=slice(None, 2), lon=slice(None, 2))
-periods = hilbert_spectrum(spc)
-periods = periods.chunk()
-periods.isel(Period=0, time=0).plot()
-plt.show()
+
+def plot_periods(periods):
+
+    # periods = periods.resample(time='M').sum('time')
+
+
+    # periods_list = [5, 10, 15, 20, 25]
+    periods_list=[90 ,30 ,15, 8,4, 2]
+
+    for time in periods.time.values:
+        p = periods.sel(Period=periods_list, method='nearest').sel(time=time).plot.contourf(cmap='RdBu', vmax=10, vmin=-10,
+                                                                                          transform=ccrs.PlateCarree(),
+                                                                                          col='Period', col_wrap=3,
+                                                                                          aspect=periods.lon.shape[0] /
+                                                                                                 periods.lat.shape[0],
+                                                                                          levels=50, subplot_kws={
+                'projection': ccrs.PlateCarree()})
+        for i, ax in enumerate(p.axes.flat):
+            fraction_of_power   = np.abs(periods.sel(Period=periods_list[i],
+                                            method='nearest').sel(time=time)).sum(['lat', 'lon']).values / \
+                np.abs(periods.sel(time=time)).sum(['Period', 'lat', 'lon']).values
+            ax.text(-44, -26, str(round(fraction_of_power*100))+'%')
+            ax.coastlines()
+            ax.add_feature(states_provinces, edgecolor='gray')
+        plt.suptitle(pd.Timestamp(time).strftime("%Y-%m-%d"))
+        plt.savefig(f'figs/plot_{time}.png')
+        plt.close()
+
+
+sp = dict(lat=-23, lon=-45)
+
+spc = xr.open_dataarray('~/prec_emd_for_mair_unscaled.nc')
+# for time in spc.time.values[:100]:
+#     f, ax = plt.subplots(subplot_kw=dict(projection=ccrs.PlateCarree()))
+#     spc.sel(time=time).sum('encoded_dims').plot.contourf(levels=30, vmin=0, vmax=50,
+#                                        transform=ccrs.PlateCarree(),
+#                                        ax=ax)
+#
+#     ax.coastlines()
+#     ax.add_feature(cfeature.BORDERS)
+#     ax.add_feature(states_provinces, edgecolor='black')
+#     ax.set_extent([spc.lon.min().values, spc.lon.max().values, spc.lat.min().values, spc.lat.max().values])
+#     plt.suptitle(pd.Timestamp(time).strftime("%Y-%m-%d"))
+#     plt.savefig(f'figs/precip/plot_{time}.png')
+#     plt.close()
+#
+# for time in spc.time.values[:100]:
+#     p = spc.sel(time=time).plot.contourf(levels=30,col='encoded_dims',col_wrap=2, vmin=-10, vmax=10, cmap='RdBu',
+#                                        transform=ccrs.PlateCarree(),aspect=spc.lon.shape[0] / spc.lat.shape[0],
+#                                        subplot_kws={'projection': ccrs.PlateCarree()})
+#
+#     for i, ax in enumerate(p.axes.flat):
+#         ax.coastlines()
+#         ax.add_feature(cfeature.BORDERS)
+#         ax.add_feature(states_provinces, edgecolor='black')
+#         ax.set_extent([spc.lon.min().values, spc.lon.max().values, spc.lat.min().values, spc.lat.max().values])
+#     plt.suptitle(pd.Timestamp(time).strftime("%Y-%m-%d"))
+#     plt.savefig(f'figs/encoded_dims/plot_{time}.png')
+#     plt.close()
+
+
+spc = spc.isel(encoded_dims=slice(None, -   1))  # lose low freq which is residual
+spc = spc.sel(lon=slice(-55, None), lat=slice(-10, -30))
+periods = hilbert_spectrum(spc, out_type='period', apply_gauss=False)
+#periods = periods.where(periods > 0, 0)
+p_anomaly = xr.apply_ufunc(lambda x, y: x - y, periods.groupby('time.month'), periods.groupby('time.month').mean('time'))
+p_anomaly = periods # anomaly doesnt make much sense because the low freqs capture seasonality alone
+p = p_anomaly.where(p_anomaly>0, 0).groupby('time.month').mean('time').plot.contourf(col='Period', row='month',
+                                                          transform=ccrs.PlateCarree(), vmin=0, vmax=3,
+                                                          aspect=periods.lon.shape[0] /
+                                                                 periods.lat.shape[0], cmap='Blues',
+                                                          levels=50, subplot_kws={
+        'projection': ccrs.PlateCarree()})
+for i, ax in enumerate(p.axes.flat):
+
+    ax.coastlines()
+    ax.add_feature(states_provinces, edgecolor='gray')
+
+plt.savefig(f'figs/panel_positive.png'); plt.close()
+
+p = p_anomaly.where(p_anomaly<0, 0).groupby('time.month').mean('time').plot.contourf(col='Period', row='month',
+                                                          transform=ccrs.PlateCarree(), vmin=-3, vmax=0,
+                                                          aspect=periods.lon.shape[0] /
+                                                                 periods.lat.shape[0], cmap='Reds_r',
+                                                          levels=50, subplot_kws={
+        'projection': ccrs.PlateCarree()})
+for i, ax in enumerate(p.axes.flat):
+
+    ax.coastlines()
+    ax.add_feature(states_provinces, edgecolor='gray')
+
+plt.savefig(f'figs/panel_negative.png'); plt.close()
+
+p = (p_anomaly.groupby('time.season').var('time')**0.5).plot.contourf(col='Period', row='season',
+                                                          transform=ccrs.PlateCarree(),vmax=18,
+                                                          aspect=periods.lon.shape[0] /
+                                                                 periods.lat.shape[0], cmap='nipy_spectral',
+                                                          levels=50, subplot_kws={
+        'projection': ccrs.PlateCarree()})
+for i, ax in enumerate(p.axes.flat):
+
+    ax.coastlines()
+    ax.add_feature(states_provinces, edgecolor='gray')
+
+plt.savefig(f'figs/panel_stdev.png'); plt.close()
+
+plot_periods(periods)
 print('a')
-# emd_groups = list(emd.groupby('encoded_dims'))
+periods.groupby('time.season').mean('time').sel(Period=4, method='nearest').plot.contourf(levels=20, col='season'); plt.show()
+# (periods.where(periods>0,np.nan)).argmax('Period').isel(time=0).plot(); plt.show()
+# periods.Period
+# periods.sel(Period=8, method='nearest').groupby('time.month').sum('time').sel(month=1).plot.contourf(
+#     levels=20, cmap='RdBu')
+# plt.show()
+#
+# periods.where(periods > 0).sel(Period=4, method='nearest').sum('time').plot();
+# plt.show()
+# # print('a')
+# #
+# # periods.argmax('Period').isel(time=10).plot()
+# # plt.show()
+# periods.sel(**sp, method='nearest').groupby('time.dayofyear').sum('time').plot.contourf(vmin=-0.12,
+#                                                                                         vmax=0.12, levels=60,
+#                                                                                         cmap='RdBu')
+# plt.show()
+# periods.sel(**sp, method='nearest').sum('Period').plot()
+# plt.show()
+# spc.sel(**sp, method='nearest').sum('encoded_dims').plot()
+# plt.show()
+# print('a')
+# emd_grups = list(emd.groupby('encoded_dims'))
 # freqs = []
 # for label, group in emd_groups:
 #     analytic_signal = hilbert(group.values)
