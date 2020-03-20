@@ -133,7 +133,7 @@ def hilbert_spectrum(emd_array, out_type='period', apply_gauss=False):
     elif out_type == 'period':
         # periods_array = np.linspace(20, 4, 30)
         # periods_array = np.array([30, 25, 20, 15, 10, 5, 1])
-        periods_array = np.array([90 ,30 ,15, 8,4, 2, 0.5])
+        periods_array = np.array([90, 30, 15, 8, 4, 2, 0.5])
         k = 0
         periods = []
 
@@ -155,9 +155,8 @@ def plot_periods(periods):
 
     # periods = periods.resample(time='M').sum('time')
 
-
     # periods_list = [5, 10, 15, 20, 25]
-    periods_list=[90 ,30 ,15, 8,4, 2]
+    periods_list = [90, 30, 15, 8, 4, 2]
 
     for time in periods.time.values:
         p = periods.sel(Period=periods_list, method='nearest').sel(time=time).plot.contourf(cmap='RdBu', vmax=10, vmin=-10,
@@ -168,7 +167,7 @@ def plot_periods(periods):
                                                                                           levels=50, subplot_kws={
                 'projection': ccrs.PlateCarree()})
         for i, ax in enumerate(p.axes.flat):
-            fraction_of_power   = np.abs(periods.sel(Period=periods_list[i],
+            fraction_of_power = np.abs(periods.sel(Period=periods_list[i],
                                             method='nearest').sel(time=time)).sum(['lat', 'lon']).values / \
                 np.abs(periods.sel(time=time)).sum(['Period', 'lat', 'lon']).values
             ax.text(-44, -26, str(round(fraction_of_power*100))+'%')
@@ -244,11 +243,9 @@ for i, ax in enumerate(p.axes.flat):
 plt.savefig(f'figs/panel_negative.png'); plt.close()
 
 p = (p_anomaly.groupby('time.season').var('time')**0.5).plot.contourf(col='Period', row='season',
-                                                          transform=ccrs.PlateCarree(),vmax=18,
-                                                          aspect=periods.lon.shape[0] /
-                                                                 periods.lat.shape[0], cmap='nipy_spectral',
-                                                          levels=50, subplot_kws={
-        'projection': ccrs.PlateCarree()})
+                                                          transform=ccrs.PlateCarree(),vmax=8,
+                                                          aspect=periods.lon.shape[0] / periods.lat.shape[0], cmap='nipy_spectral',
+                                                          levels=50, subplot_kws={'projection': ccrs.PlateCarree()})
 for i, ax in enumerate(p.axes.flat):
 
     ax.coastlines()
@@ -256,7 +253,7 @@ for i, ax in enumerate(p.axes.flat):
 
 plt.savefig(f'figs/panel_stdev.png'); plt.close()
 
-plot_periods(periods)
+# plot_periods(periods)
 print('a')
 periods.groupby('time.season').mean('time').sel(Period=4, method='nearest').plot.contourf(levels=20, col='season'); plt.show()
 # (periods.where(periods>0,np.nan)).argmax('Period').isel(time=0).plot(); plt.show()
