@@ -5,7 +5,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 import dask
 from multiprocessing.pool import ThreadPool
-
+import matplotlib
 dask.config.set(scheduler='threads')  # Global config
 dask.config.set(pool=ThreadPool(20))  # To avoid omp error
 import xarray as xr
@@ -26,7 +26,87 @@ states_provinces = cfeature.NaturalEarthFeature(
     name='admin_1_states_provinces_lines',
     scale='50m',
     facecolor='none')
+def magnify():
+    return [
+        dict(selector="th", props=[("font-size", "8pt")]),
+        dict(selector="td", props=[("padding", "0em 0em")]),
+        dict(selector="th:hover", props=[("font-size", "12pt")]),
+        dict(
+            selector="tr:hover td:hover",
+            props=[("max-width", "200px"), ("font-size", "12pt")],
+        ),
+    ]
 
+def write_to_html_file(
+    df,
+    title="",
+    filename="out.html",
+    mode="forecast",
+    cmap="GnBu",
+    color1="#d65f5f",
+    color2="#3361CC",
+    low=0,
+    high=0,
+    axis=0,
+):
+    """
+    Write a Pandas dataframe to an HTML file with nice formatting.
+    """
+    print("*" * 20)
+    cm = matplotlib.cm.get_cmap(cmap)
+    result = """
+    <style>
+
+        h2 {
+            margin-top:80px;
+            text-align: center;
+            font-family: Helvetica, Arial, sans-serif;
+        }
+        table {
+            margin-left: 80px;
+            margin-right: 80px;
+            margin-bottom: 50px;
+        }
+        table, th, td {
+            border: 1px solid black;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 5px;
+            text-align: center;
+            font-family: Helvetica, Arial, sans-serif;
+            font-size: 90%;
+        }
+        table tbody tr:hover {
+            background-color: #dddddd;
+        }
+        .wide {
+            width: 60%;
+        }
+
+    </style>
+    <div position:"absolute">
+    """
+    result += "<h2> %s </h2>\n" % title
+    # result += df.to_html(classes='wide', escape=False)
+    if mode == "forecast":
+        result += (
+            df.style.background_gradient(cmap=cm, axis=axis, low=low, high=high)
+            .set_table_styles(magnify())
+            .render()
+        )
+    elif mode == "error":
+        s = df.style.bar(align="left", color=[color1, color2], vmax=50).set_table_styles(
+            magnify()
+        )
+
+        result += s.render()
+    result += """
+    </div>
+    """
+    with open(filename, "w") as f:
+        f.write(result)
+    return None
 
 def coarsen_global_data(da: xr.DataArray, coarsen_by: float) -> xr.DataArray:
     Nlats = da.lat.values.shape[0] / coarsen_by
@@ -151,7 +231,8 @@ def hilbert_spectrum(emd_array, out_type='period', apply_gauss=False):
     phase = xr.apply_ufunc(lambda x: run_hilbert(x),
                            emd_array, dask='allowed'
                            )
-    freq = 4 * phase.diff('time') / (2 * np.pi)
+
+    freq = phase.diff('time') / (2 * np.pi)
     freq = freq.unstack().load()
 
     if out_type == 'freq':
@@ -159,13 +240,14 @@ def hilbert_spectrum(emd_array, out_type='period', apply_gauss=False):
     elif out_type == 'period':
         # periods_array = np.linspace(20, 4, 30)
         # periods_array = np.array([30, 25, 20, 15, 10, 5, 1])
-        periods_array = np.array([90, 30, 15, 8, 4, 2, 0.5])
+        periods_array = np.array([2000, 90, 30, 15, 4, 0.5])
         k = 0
         periods = []
-
+        emd_stacked = emd_array.stack({'points': ['lat', 'lon']}).isel(time=slice(None, -1))
         while k < (periods_array.shape[0] - 1):  # TODO make it faster
-            mask = (freq > 1 / periods_array[k]) & (freq < 1 / periods_array[k + 1])
-            periods.append(emd_array.isel(time=slice(None, -1)).where(mask).sum('encoded_dims'))
+            mask = (freq > periods_array[k] ** -1) & (freq < periods_array[k + 1] ** -1)
+            mask = mask.stack({'points': ['lat', 'lon']})
+            periods.append(emd_stacked.where(mask).sum('encoded_dims').unstack())
             k += 1
             print(k)
 
@@ -206,6 +288,14 @@ def plot_periods(periods):
 
 sp = dict(lat=-23, lon=-45, method='nearest')
 
+
+regions = dict(
+    sebr_coords=dict(lon=slice(-50, -40), lat=slice(-20, -30)),
+    nbr_coords=dict(lon=slice(-70, -55), lat=slice(0, -15)),
+    nebr_coords=dict(lon=slice(-45, -35), lat=slice(-3,-10)),
+    sacz_coords=dict(lon=slice(-50, -45), lat=slice(-15, -20)),
+)
+
 # spc = xr.open_dataarray('/home/gab/phd/data/ds_emd.nc')
 
 
@@ -226,17 +316,117 @@ sp = dict(lat=-23, lon=-45, method='nearest')
 # plt.ylabel('Rainfall (mm/day)')
 # plt.legend(['Observed rainfall', 'Reconstructed rainfall'])
 # plt.show()
-# spc.plot(row='encoded_dims', aspect=5)
-# plt.show()
+# p = spc.plot(col='encoded_dims', col_wrap=2, lw=0.2, aspect=3)
+# plt.savefig('figs/panel_emd.pdf')
 # periods.plot(row='Period', aspect=3)
 # ---- computing Hilbert ----- #
-#spc = xr.open_dataarray('/home/users/gmpp/ds_emd.nc')
-# #
-# spc = spc.isel(encoded_dims=slice(None, -   1))  # lose low freq which is residual
-# periods = hilbert_spectrum(spc, out_type='period', apply_gauss=False)
-# periods.to_netcdf('/home/users/gmpp/ds_periods.nc')
+# spc = xr.open_dataarray('/home/users/gmpp/ds_emd.nc')
+spc = xr.open_dataarray('/home/gab/phd/data/ds_9emd.nc')
+spc = spc.sel(time=slice('2009', '2011'))
 
-# periods = xr.open_dataarray('/home/users/gmpp/ds_periods.nc')
+
+#
+from mia_lib.plotlib.miaplot import plot
+spc = spc.chunk(dict(lat=10, lon=10))
+periods = hilbert_spectrum(spc.isel(encoded_dims=slice(None, -   1)),
+                           out_type='period', apply_gauss=False)
+periods = periods.where(~np.isnan(spc.isel(encoded_dims=0))).drop('encoded_dims')
+# mean_period_seasons = periods.groupby('time.season').mean('time') ** -1
+# mean_period_seasons.name='Mean period (days)'
+mean_power_seasons = periods.groupby('time.season').var('time') ** 0.5
+mean_power_seasons.name = 'Intra-seasonal variability of daily rainfall (mm/day)'
+# mean_period_seasons=mean_period_seasons.rename({'encoded_dims': 'IMF'})
+# mean_power_seasons=mean_power_seasons.rename({'encoded_dims': 'IMF'})
+ds = xr.merge([mean_power_seasons])
+# ds = xr.merge([mean_period_seasons, mean_power_seasons])
+sebr = ds.sel(**regions['sebr_coords']).mean(['lat', 'lon'])
+nbr = ds.sel(**regions['nbr_coords']).mean(['lat', 'lon'])
+nebr = ds.sel(**regions['nebr_coords']).mean(['lat', 'lon'])
+sacz = ds.sel(**regions['sacz_coords']).mean(['lat', 'lon'])
+
+
+
+areas = xr.concat([sebr, nbr, nebr, sacz],dim=pd.Index(['SEBR', 'Amazon', 'NEBR', 'SACZ'], name='Region'))
+
+df = areas.to_dataframe()
+# df = df.reset_index().set_index(['IMF', 'season']).pivot(columns='Region')
+df = df.round(decimals=1)
+# df = df.astype(str)
+df.style.background_gradient(cmap='RdBu', axis=0).set_table_styles(magnify())
+def formatter(x):
+    return "\\" + 'bold '  + str(x)
+formatters = [formatter for _ in range(df['Mean period (days)'].shape[1])]
+with open('figs/table.txt', 'w') as file:
+    file.write(df['Mean period (days)'].to_latex(multicolumn=True))
+plt.style.use('fivethirtyeight')
+ax = df.plot.bar(figsize=[20,10], y='Mean period (days)', log='y')
+ax.axhline(y=365, color='red')
+ax.axhline(y=30, color='red')
+plt.savefig('figs/periods.pdf', bbox_inches='tight')
+plt.style.use('seaborn')
+axes = df['Intra-seasonal variability of daily rainfall (mm/day)'].unstack('Region').unstack('season').plot.bar(color='black',subplots=True, layout=[4, 4], legend=False, title=None, sharey=True, sharex=True)
+for ax in axes.flatten():
+    ax.set_ylabel('mm/day')
+    ax.set_xticklabels(['1-4', '4-15', '15-30', '30-90', '> 90'])
+    ax.set_xlabel('Period (days)')
+
+plt.savefig('figs/barplot.pdf', bbox_inches='tight'); plt.close()
+write_to_html_file(df, axis=0, filename='figs/table.html', cmap='RdBu', mode='error')
+
+
+from shapely.geometry import LineString
+to_plot=mean_power_seasons.sel(Period=15)
+to_plot = to_plot.where(to_plot>0)
+f, ax = plt.subplots( subplot_kw={'projection': ccrs.PlateCarree()})
+p = to_plot.where(to_plot>0).sel(season='DJF').plot(levels=np.arange(0, 10, 1), transform=ccrs.PlateCarree(),
+   vmin=0, vmax=20, cmap='BrBG', ax=ax, cbar_kwargs=dict(label='mm/day') )
+ax.coastlines()
+
+for region in regions.keys():
+    coords = regions[region]
+    x = [coords['lon'].start,
+         coords['lon'].start,
+         coords['lon'].stop,
+         coords['lon'].stop,
+         coords['lon'].start,
+
+         ]
+    y = [coords['lat'].start,
+         coords['lat'].stop,
+         coords['lat'].stop,
+         coords['lat'].start,
+         coords['lat'].start,
+         ]
+
+    ax.plot(x, y, lw=1.2, color='black', linestyle=':' )
+
+ax.set_title(None)
+plt.savefig('figs/subseasonal_variability.pdf', bbox_inches='tight')
+plt.close()
+
+
+
+
+from mia_lib.miacore.xrumap import autoencoder
+mean_period = mean_period.sel(lon=slice(-60,None), )
+mean_period = mean_period.stack({'points': ['lat', 'lon']}).transpose('points', ...)
+
+mean_period = mean_period.dropna('points')
+from sklearn.cluster import KMeans
+
+kmeans = KMeans(n_clusters=4).fit_predict(mean_period.sel(encoded_dims=[4,5,6]).values)
+
+kmeans = mean_period.sel(encoded_dims=3).copy(data=kmeans)
+kmeans=kmeans.unstack()
+kmeans.sortby('lat').sortby('lon').plot(cmap='YlGn'); plt.show()
+encoder = autoencoder(mode='k_means', alongwith=['encoded_dims'], dims_to_reduce=['lat', 'lon'])
+encoder = encoder.fit(mean_period)
+
+da = encoder.transform(mean_period)
+da=da.sortby('lon')
+periods.to_netcdf('/home/users/gmpp/ds_periods.nc')
+
+periods = xr.open_dataarray('/home/users/gmpp/ds_periods.nc')
 periods = xr.open_dataarray('/home/gab/phd/data/ds_periods_9emd.nc')
 spc = xr.open_dataarray('/home/gab/phd/data/ds_9emd.nc')
 
