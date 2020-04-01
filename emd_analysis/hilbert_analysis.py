@@ -14,9 +14,11 @@ import xarray as xr
 import matplotlib as mpl
 # mpl.use('Agg')
 import matplotlib.pyplot as plt
+from typing import Optional, List, Tuple
 import pandas as pd
 import numpy as np
 from phdlib.utils.xrumap import autoencoder as xru
+from scipy.signal import hilbert
 
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
@@ -216,24 +218,145 @@ def assert_time_is_last_entry(da):
     return da.transpose(*dims)
 
 
+class HilbertSpectrum:
+    """
+    Class to compute quantities related to the Hilber spectrum. Assumes that time is the last dimension.
+    """
+
+    @staticmethod
+    def analytic_signal(imf_da, dask='allowed'):
+        return xr.apply_ufunc(lambda x: hilbert(x), imf_da, dask=dask)
+
+    @classmethod
+    def amplitude(cls, imf_da, dask='allowed'):
+        analytic_da = cls.analytic_signal(imf_da, dask=dask)
+        return xr.apply_ufunc(lambda x: np.abs(x), analytic_da, dask=dask)
+
+    @staticmethod
+    def phase(analytic_da, dask='allowed'):
+        return xr.apply_ufunc(lambda x: np.unwrap(np.angle(x)), analytic_da, dask=dask)
+
+    @classmethod
+    def frequency(cls, imf_da, dask='allowed', sampledimname='time', timeunit='D'):
+        """
+
+        Parameters
+        ----------
+        imf_da : xr.DataArray
+                    Array containing IMFs
+        dask : str
+                    Whether dask is allowed. See xr.apply_ufunc documentation for options.
+        sampledimname : str
+        timeunit : str
+
+        Returns : xr.DataArray
+        -------
+
+        """
+        analytic_da = cls.analytic_signal(imf_da, dask=dask)
+        phase = cls.phase(analytic_da, dask=dask)
+        freq = phase.differentiate(sampledimname, datetime_unit=timeunit) / (2 * np.pi)
+        return freq.where(freq > 0, 0)
+
+    @classmethod
+    def groupbyfreqbins(cls,
+                        freq_da: xr.DataArray,
+                        amplitude_da: int,
+                        nbins: Optional[int] = None,
+                        nmin: Optional[int]=3,
+                        bins=None,
+                        bintype='freq',
+                        deepcopy=True,
+                        imfdim: Optional[str]='encoded_dims'):
+        """
+        Parameters
+        ----------
+        freq_da : xr.DataArray
+                    Array representing the instantaneous frequencies of each IMF
+        amplitude_da : xr.DataArray
+                    Array representing the instantaneous amplitude of each IMF
+        nbins : int
+                    Desired number of frequency bins
+        nmin : int
+                    minimum number of points for the derivative to be stable. See eq. 7.3 in Huang et al. (1999)
+        imfdim : str
+                    name of dimension containing IMF coords
+
+        Returs : xr.DataArray
+                    array with amplitude accumulated by frequency bins.
+        """
+        # dt = freq_da.time.diff('time').values[0]
+        if deepcopy:
+            freq_da = freq_da.copy()
+        dt = 1 # days
+        T = freq_da.time.shape[0]
+        N = cls._assert_nbins(T, dt=1, n=nmin)
+        if isinstance(nbins, type(None)):
+            nbins = N
+        elif nbins > N:
+            nbins = N
+        if bintype == 'period':
+            freq_da = freq_da ** -1
+        if not isinstance(bins, type(None)):
+            freqmin = freq_da.min().values
+            freqmax = freq_da.max().values
+            bins = np.linspace(freqmin, freqmax, nbins)
+
+        binszip = zip(bins[:-1], bins[1:])
+        out_da = []
+        for f0, f1 in binszip:
+            print(f0, f1)
+            mask = (freq_da > f0) & (freq_da < f1)
+            out_da.append(amplitude_da.where(mask).sum(imfdim))
+            print('Done {}'.format(str(f0)))
+        out_da = xr.concat(out_da, dim=pd.Index(bins[1:], name=bintype))
+        return out_da
+    @staticmethod
+    def _assert_nbins(T, dt, n=3):
+        """
+        Internal method to return a number of bins that attend the restriction
+        from eq. 7.3 in Huang et al. (1999)
+        Parameters
+        ----------
+        T
+        dt
+        n
+
+        Returns
+        -------
+
+        """
+        return int(T/(n*dt))
+
+
 def hilbert_spectrum(emd_array, out_type='period', apply_gauss=False):
     from scipy.signal import hilbert
     from scipy.ndimage import gaussian_filter
-    def run_hilbert(group):
+    def run_hilbert(group, mode):
         analytic_signal = hilbert(group)
+        amplitude=np.abs(analytic_signal)
         phase = np.unwrap(np.angle(analytic_signal))
         #  freq = 4 * np.diff(phase) / (2 * np.pi)
-        return phase
+        if mode=='amplitude':
+            return amplitude
+        elif mode=='phase':
+            return phase
 
     # dask_array = emd_array.chunk(dict(encoded_dims=1, lat=1, lon=1))
     # temp_array = dask_array.stack({'stacked': ['encoded_dims', 'lat', 'lon']})
     emd_array = assert_time_is_last_entry(emd_array)
-    phase = xr.apply_ufunc(lambda x: run_hilbert(x),
+    phase = xr.apply_ufunc(lambda x: run_hilbert(x, mode='phase'),
+                           emd_array, dask='allowed'
+                           )
+    amplitude = xr.apply_ufunc(lambda x: run_hilbert(x, mode='amplitude'),
                            emd_array, dask='allowed'
                            )
 
-    freq = phase.diff('time') / (2 * np.pi)
-    freq = freq.unstack().load()
+    freq = phase.differentiate('time', datetime_unit='D') / (2 * np.pi)
+    freq = freq.where(freq > 0, 0)
+    freqmin = freq.min()
+    freqmax = freq.max()
+    freqbins = np.linspace(freqmin, freqmax, 100)
 
     if out_type == 'freq':
         return freq
@@ -296,10 +419,117 @@ regions = dict(
     sacz_coords=dict(lon=slice(-50, -45), lat=slice(-15, -20)),
 )
 
-# spc = xr.open_dataarray('/home/gab/phd/data/ds_emd.nc')
+spc = xr.open_dataarray('/home/gab/phd/data/ds_emd.nc')
+masks_dict = dict()
+for region in regions.keys():
+    masks_dict[region] = dict(lon=(spc.lon < regions[region]['lon'].stop) & (spc.lon > regions[region]['lon'].start),
+                              lat=(spc.lat < regions[region]['lat'].stop) & (spc.lon > regions[region]['lat'].start))
+
+    spc[region] = ('lat', 'lon'), xr.zeros_like(spc.isel(time=0, encoded_dims=0)).where(~(masks_dict[region]['lat'] & masks_dict[region]['lon']), 1)
+
+spc = spc.chunk(dict(encoded_dims=spc.encoded_dims.values.shape[0]))
+spc=spc.isel(time=slice(None, 365))
+spc = assert_time_is_last_entry(spc)
+spc = spc.isel(encoded_dims=slice(None, -1))
+freq = HilbertSpectrum.frequency(spc)
+amplitude_da = HilbertSpectrum.amplitude(spc)
+freq_grouped = HilbertSpectrum.groupbyfreqbins(freq, amplitude_da, nbins=30)
+freq_grouped = freq_grouped.where(spc.isel(time=0, encoded_dims=0) != np.nan,  np.nan)
+freq_grouped = freq_grouped.drop('encoded_dims')
+amplitude_grouped_by_periods = freq_grouped.assign_coords({'freq': freq_grouped.freq ** -1}).rename({'freq': 'period'})
+amplitude_grouped_by_periods.sel(**regions['sacz_coords']).mean(['lat', 'lon']).plot.contourf(levels=50,x='time', cmap='nipy_spectral')
+plt.show()
+freq_grouped.sel(**regions['nbr_coords']).mean(['lat', 'lon']).plot.contourf(levels=50,ylim=[5/365, 1/5],
+                                                                              x='time', cmap='nipy_spectral')
+plt.show()
+marginal_spectrum_sacz = freq_grouped.sel(**regions['sacz_coords']).mean(['lat', 'lon']).sum('time').values
+marginal_spectrum_nbr = freq_grouped.sel(**regions['nbr_coords']).mean(['lat', 'lon']).sum('time').values
+marginal_spectrum_nebr = freq_grouped.sel(**regions['nebr_coords']).mean(['lat', 'lon']).sum('time').values
+marginal_spectrum_sebr = freq_grouped.sel(**regions['sebr_coords']).mean(['lat', 'lon']).sum('time').values
+
+plt.scatter(y=marginal_spectrum_sacz, x=freq_grouped.freq.values, marker='D')
+plt.scatter(y=marginal_spectrum_nbr, x=freq_grouped.freq.values, marker='D')
+plt.scatter(y=marginal_spectrum_nebr, x=freq_grouped.freq.values, marker='D')
+plt.scatter(y=marginal_spectrum_sebr, x=freq_grouped.freq.values, marker='D')
+plt.legend(['sacz', 'nbr', 'nebr', 'sebr'])
+plt.semilogx(True)
+plt.semilogy(True)
+plt.show()
+marginal_spectrum_sacz = freq_grouped.sel(**regions['sacz_coords']).mean(['lat', 'lon']).sum('freq').values
+marginal_spectrum_nbr = freq_grouped.sel(**regions['nbr_coords']).mean(['lat', 'lon']).sum('freq').values
+marginal_spectrum_nebr = freq_grouped.sel(**regions['nebr_coords']).mean(['lat', 'lon']).sum('freq').values
+marginal_spectrum_sebr = freq_grouped.sel(**regions['sebr_coords']).mean(['lat', 'lon']).sum('freq').values
+
+plt.scatter(y=marginal_spectrum_sacz, x=freq_grouped.time, marker='D')
+plt.scatter(y=marginal_spectrum_nbr, x=freq_grouped.time, marker='D')
+plt.scatter(y=marginal_spectrum_nebr, x=freq_grouped.time, marker='D')
+plt.scatter(y=marginal_spectrum_sebr, x=freq_grouped.time, marker='D')
+plt.legend(['sacz', 'nbr', 'nebr', 'sebr'])
+
+plt.show()
+
+sacz = xr.open_dataarray('~/da_amplitude_sacz.nc')
+nbr = xr.open_dataarray('~/da_amplitude_nbr.nc')
+nebr = xr.open_dataarray('~/da_amplitude_nebr.nc')
+sebr = xr.open_dataarray('~/da_amplitude_sebr.nc')
+
+da = xr.concat([sacz, nbr, nebr, sebr], pd.Index(['sacz', 'nbr', 'nebr', 'sebr'], name='region'))
+
+#
+# period_timedeltas = [pd.Timedelta(x, unit='D') for x in np.diff(da.period.values)]
+# period_timedeltas.append(period_timedeltas[-1] )
+# da['period_timedeltas'] = 'period', period_timedeltas
+# da = da.assign_coords(period=period_timedeltas)
+# da=da.sortby('period')
+# da
+# da = da.resample(period='20D').mean(skipna=True)
+# daa = da.groupby('time.season').mean('time')
+# da.plot( row='region')
+# plt.show()
+
+from scipy.signal import resample
+daa = resample(da.values, da.period.shape[0], axis=1) # resampling periods
+new_periods = np.linspace(da.period.min().values, da.period.max().values,  da.period.shape[0],endpoint=False)
+daa = xr.DataArray(daa, dims=da.dims, coords=dict(
+    region=da.region,
+    period=new_periods,
+    time=da.time
+))
+bins = np.round(np.linspace(5, 18, 5))
+bins_zip = zip(bins[0:-1], bins[1:])
+arr_list = []
+for b1, b2 in bins_zip:
+    mask = (daa.period > b1) & (daa.period < b2)
+    arr_list.append(daa.where(mask, drop=True).sum('period'))
+
+arr_binned = xr.concat(arr_list, dim=pd.Index(bins[1:], name='period_bins'))
+df = arr_binned.groupby('time.season').mean('time').to_dataframe(name='a').unstack('region').unstack('season')
+df.plot.bar(subplots=True, layout=[4, 4],  legend=False, title=None,sharey=False,  sharex=True)
+plt.show()
 
 
-# ---- Line plots for SP ----#
+daa.plot(col='region', col_wrap=2, vmin=0, cmap='nipy_spectral', cbar_kwargs=dict(orientation='h'))
+plt.show()
+daa.sum('time').plot.line(hue='region')
+plt.loglog(True)
+plt.show()
+
+
+
+period_timedeltas = [pd.Timestamp(x, unit='D') for x in -np.diff(da.period.values)]
+period_timedeltas.append(period_timedeltas[-1] + pd.Timedelta(1))
+da = da.assign_coords(period=period_timedeltas)
+da=da.sortby('period')
+da = da.resample(period='1D').sum(skipna=False)
+da.plot(col='region')
+plt.show()
+da
+da.period
+daa = daa.resample(period=1)
+daa.plot.line(col='season',col_wrap=2,hue='region')
+plt.show()
+# ---- L
+# ine plots for SP ----#
 # spc = xr.open_dataarray('/home/gab/phd/data/ds_9emd.nc').sel(**sp)
 # periods = xr.open_dataarray('/home/gab/phd/data/ds_periods_9emd.nc').sel(**sp)
 # chuva_reconstruida = periods.sel(time=slice('2009','2015' )).sum('Period')
@@ -321,13 +551,15 @@ regions = dict(
 # periods.plot(row='Period', aspect=3)
 # ---- computing Hilbert ----- #
 # spc = xr.open_dataarray('/home/users/gmpp/ds_emd.nc')
-spc = xr.open_dataarray('/home/gab/phd/data/ds_9emd.nc')
-spc = spc.sel(time=slice('2009', '2011'))
+# spc = xr.open_dataarray('/home/gab/phd/data/ds_9emd.nc')
+# spc = spc.sel(time=slice('2009', '2011'))
 
 
 #
-from mia_lib.plotlib.miaplot import plot
-spc = spc.chunk(dict(lat=10, lon=10))
+# from mia_lib.plotlib.miaplot import plot
+spc = spc.chunk(dict(encoded_dims=spc.encoded_dims.shape[0]))
+spc = spc.isel(time=slice(None,200))
+periods = periods.chunk(dict(Period=periods.Period.shape[0]))
 periods = hilbert_spectrum(spc.isel(encoded_dims=slice(None, -   1)),
                            out_type='period', apply_gauss=False)
 periods = periods.where(~np.isnan(spc.isel(encoded_dims=0))).drop('encoded_dims')
@@ -367,7 +599,7 @@ plt.style.use('seaborn')
 axes = df['Intra-seasonal variability of daily rainfall (mm/day)'].unstack('Region').unstack('season').plot.bar(color='black',subplots=True, layout=[4, 4], legend=False, title=None, sharey=True, sharex=True)
 for ax in axes.flatten():
     ax.set_ylabel('mm/day')
-    ax.set_xticklabels(['1-4', '4-15', '15-30', '30-90', '> 90'])
+    # ax.set_xticklabels(['1-4', '4-15', '15-30', '30-90', '> 90'])
     ax.set_xlabel('Period (days)')
 
 plt.savefig('figs/barplot.pdf', bbox_inches='tight'); plt.close()

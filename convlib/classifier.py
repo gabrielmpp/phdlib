@@ -1,13 +1,12 @@
 import xarray as xr
-from meteomath import to_cartesian, divergence
+from meteomath import  divergence
 import pandas as pd
 from LagrangianCoherence.LCS.LCS import LCS
 from LagrangianCoherence.LCS.trajectory import parcel_propagation
 import sys
 from typing import Optional
-import numpy as np
 import concurrent.futures
-from xr_tools.tools import get_seq_mask, get_xr_seq, latlonsel
+from xr_tools.tools import  get_xr_seq, latlonsel
 
 config_jasmin = {
     'data_basepath': '/media/gabriel/gab_hd/data/sample_data/',
@@ -17,7 +16,7 @@ config_jasmin = {
     'time_freq': '6H',
     'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-02-07T18:00:00'),
                    'latitude': slice(-80, 30),
-                   'longitude': slice(-140, 15),
+                   'longitude': slice(-180, 15),
                    # 'latitude': slice(-20, -35),
                    # 'longitude': slice(-55, -35)
                     }
@@ -31,7 +30,7 @@ config_local = {
     'time_freq': '6H',
     'array_slice_latlon': {
                    'latitude': slice(-80, 30),
-                   'longitude': slice(-140, -1),
+                   'longitude': slice(-180, -1),
                    # 'latitude': slice(-20, -35),
                    # 'longitude': slice(-55, -35)
                     },

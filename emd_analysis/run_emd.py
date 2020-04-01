@@ -12,7 +12,7 @@ emd_kwargs = dict(  # DEFAULT EMD KWARGS - don't change here
 )
 
 
-relax_thresholds = 1.2  # relaxation factor > 1
+relax_thresholds = 1  # relaxation factor > 1
 max_imf = 9
 for key in emd_kwargs.keys():
     emd_kwargs[key] = relax_thresholds * emd_kwargs[key]
@@ -21,7 +21,7 @@ xru_kwargs = dict(
 alongwith=['time'],
     mode='emd',
     parallel=True,
-    nthreads=30,
+    nthreads=20,
     emd_kwargs=emd_kwargs
 )
 cpc_path = Path('/home/users/gmpp/phd_data/precip_1979a2017_CPC_AS.nc')
@@ -38,8 +38,8 @@ transformer_kwargs = dict()
 transformer_kwargs['max_imf'] = max_imf
 
 xru_transformer = xru.autoencoder(**xru_kwargs)
-xru_transformer = xru_transformer.fit(ds)
-ds = xru_transformer.transform(ds, **transformer_kwargs)
+xru_transformer = xru_transformer.fit(ds, **xru_kwargs)
+ds = xru_transformer.transform(ds, transformer_kwargs=transformer_kwargs, **xru_kwargs)
 if ds.encoded_dims.shape[0] == 1:
     ds = ds.isel(encoded_dims=0).drop('encoded_dims')
 print('saving')
