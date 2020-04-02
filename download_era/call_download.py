@@ -13,10 +13,10 @@ if __name__ == '__main__':
     # script_paths = ['/home/users/gmpp/phdlib/download_era/download_era_viwvn.py',]
     script_paths = [
                     #this_file_path / 'download_era_viwvn.py',
-                    this_file_path / 'download_era_convective.py',
+                    this_file_path / 'download_humid.py',
                     #this_file_path / 'download_era_tcwv.py'
     ]
-    years = np.arange(1979, 2020, 1)
+    years = np.array([2020])
     jasmin = True  # also change config, paths and python
     if jasmin:
 

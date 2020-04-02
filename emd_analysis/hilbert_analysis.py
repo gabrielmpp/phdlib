@@ -420,6 +420,18 @@ regions = dict(
 )
 
 spc = xr.open_dataarray('/home/gab/phd/data/ds_emd.nc')
+spc = spc.sel(**regions['sacz_coords'])
+spc = xr.apply_ufunc(lambda x, y: x - y, spc.groupby('time.month'), spc.groupby('time.month').mean('time')) # anomaly
+energy = ((spc.sel(**sp).sel(encoded_dims=1))**2).sum()/spc.time.shape[0]
+f_spc = xr.apply_ufunc(lambda x: np.abs(np.fft.fft(x, axis=2)), spc)
+freqs = np.fft.fftfreq(spc.time.shape[0])
+f_spc = f_spc.assign_coords(time=(freqs**-1)).rename({'time': 'logperiod'}).sortby('logperiod').isel(logperiod=slice(None,-1))
+(f_spc).sel(**sp).sel(encoded_dims=[8], logperiod=slice(None, 12)).plot.line(x='logperiod')
+plt.semilogx()
+plt.show()
+f_spc = f_spc.rename
+f_spc = f_spc.mean(['lat', 'lon'])
+f_spc.plot.line(x='time')
 masks_dict = dict()
 for region in regions.keys():
     masks_dict[region] = dict(lon=(spc.lon < regions[region]['lon'].stop) & (spc.lon > regions[region]['lon'].start),
