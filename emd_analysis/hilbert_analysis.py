@@ -419,15 +419,18 @@ regions = dict(
     sacz_coords=dict(lon=slice(-50, -45), lat=slice(-15, -20)),
 )
 
-spc = xr.open_dataarray('/home/gab/phd/data/ds_emd.nc')
+spc = xr.open_dataarray('/home/gab/phd/data/ds_emd_sp.nc')
+residual = spc.isel(encoded_dims=-1)
+
 spc = spc.sel(**regions['sacz_coords'])
-spc = xr.apply_ufunc(lambda x, y: x - y, spc.groupby('time.month'), spc.groupby('time.month').mean('time')) # anomaly
+# spc = xr.apply_ufunc(lambda x, y: x - y, spc.groupby('time.month'), spc.groupby('time.month').mean('time')) # anomaly
 energy = ((spc.sel(**sp).sel(encoded_dims=1))**2).sum()/spc.time.shape[0]
-f_spc = xr.apply_ufunc(lambda x: np.abs(np.fft.fft(x, axis=2)), spc)
+f_spc = xr.apply_ufunc(lambda x: np.abs(np.fft.fft(x, axis=1)), spc)
 freqs = np.fft.fftfreq(spc.time.shape[0])
 f_spc = f_spc.assign_coords(time=(freqs**-1)).rename({'time': 'logperiod'}).sortby('logperiod').isel(logperiod=slice(None,-1))
-(f_spc).sel(**sp).sel(encoded_dims=[8], logperiod=slice(None, 12)).plot.line(x='logperiod')
+(f_spc).sel( logperiod=slice(None, None), encoded_dims=slice(10,11)).plot.line(x='logperiod')
 plt.semilogx()
+
 plt.show()
 f_spc = f_spc.rename
 f_spc = f_spc.mean(['lat', 'lon'])
