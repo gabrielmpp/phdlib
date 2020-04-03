@@ -420,18 +420,65 @@ regions = dict(
 )
 
 spc = xr.open_dataarray('/home/gab/phd/data/ds_emd_sp.nc')
+plt.style.use('seaborn')
+spc.plot(row='encoded_dims', aspect=5, color='black')
+plt.savefig('figs/ceemdan.pdf')
 residual = spc.isel(encoded_dims=-1)
+energy_residual = (residual ** 2).mean('time')
+pseudo_imfs = spc.isel(encoded_dims=slice(0, -2)) # removing residual and noise
+
+from scipy.signal import find_peaks
+peaks_list = []
+for imf in pseudo_imfs.encoded_dims.values:
+    peaks, _ = find_peaks(pseudo_imfs.sel(encoded_dims=imf).values)
+    peaks_list.append(  len(peaks))
+npeaks = xr.DataArray(peaks_list, dims=['encoded_dims'], coords=dict(encoded_dims=pseudo_imfs.coords['encoded_dims'].values) )
+period = pseudo_imfs.time.shape[0]/npeaks
+period_labels = [str(round(p,1) )for p in period.values]
+energy_density = (pseudo_imfs ** 2).mean('time') / (energy_residual)
+error_bar = np.sqrt(2*period/pseudo_imfs.time.shape[0])
+
+plt.bar(height=energy_density, x=np.arange(0,9,1), yerr=error_bar)
+plt.xticks(np.arange(0,9,1), period_labels)
+plt.ylabel('Energy density scaled')
+plt.xlabel('Average period (days)')
+plt.title('Mean energy density and theoretical standard deviation\n for each pseudo-IMF in the city of Sao Paulo')
+plt.savefig('energy_sensity_sp.pdf')
+
+((pseudo_imfs)/(energy_residual)).isel(encoded_dims=5).plot.hist()
+plt.show()
+confidence1 = - np.log(period.values) + 0.675*np.sqrt(2/pseudo_imfs.time.shape[0])*np.exp(np.log(period.values)/2)
+confidence2 = - np.log(period.values) - 0.675*np.sqrt(2/pseudo_imfs.time.shape[0])*np.exp(np.log(period.values)/2)
+plt.scatter(x=np.log(period.values), y=np.log(energy_density.values))
+plt.plot( np.log(period.values), confidence1, color='black', linestyle='--')
+plt.plot( np.log(period.values), confidence2, color='black',linestyle='--')
+plt.xlabel('Log of the average periods')
+plt.ylabel('Log of the energy density scaled')
+# plt.loglog()
+plt.title('Statistical significance of the pseudo IMFs')
+plt.savefig('figs/statistical.pdf')
+plt.close()
+# ---- Plotting Pseudo IMFs ---- #
+plt.style.use('seaborn')
+pseudo_imfs.plot.line(x='time', row='encoded_dims',aspect=5, sharey=True)
+
+plt.show()
+
+
+plt.plot(energy_density)
+
 
 spc = spc.sel(**regions['sacz_coords'])
 # spc = xr.apply_ufunc(lambda x, y: x - y, spc.groupby('time.month'), spc.groupby('time.month').mean('time')) # anomaly
-energy = ((spc.sel(**sp).sel(encoded_dims=1))**2).sum()/spc.time.shape[0]
+energy = ((spc.sel(encoded_dims=1))**2).sum()/spc.time.shape[0]
 f_spc = xr.apply_ufunc(lambda x: np.abs(np.fft.fft(x, axis=1)), spc)
 freqs = np.fft.fftfreq(spc.time.shape[0])
 f_spc = f_spc.assign_coords(time=(freqs**-1)).rename({'time': 'logperiod'}).sortby('logperiod').isel(logperiod=slice(None,-1))
-(f_spc).sel( logperiod=slice(None, None), encoded_dims=slice(10,11)).plot.line(x='logperiod')
+(f_spc).sel( logperiod=slice(None, None),).plot.line(aspect=5,row='encoded_dims',x='logperiod', color='black')
 plt.semilogx()
-
-plt.show()
+plt.xlabel('Log of the period')
+plt.savefig('figs/_ceemdan.pdf')
+plt.close()
 f_spc = f_spc.rename
 f_spc = f_spc.mean(['lat', 'lon'])
 f_spc.plot.line(x='time')

@@ -19,7 +19,7 @@ for key in emd_kwargs.keys():
 
 xru_kwargs = dict(
 alongwith=['time'],
-    mode='eemd',
+    mode='ceemdan',
     parallel=True,
     nthreads=os.cpu_count() - 3,
     emd_kwargs=emd_kwargs

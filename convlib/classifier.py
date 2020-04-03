@@ -219,6 +219,8 @@ class Classifier:
         # a = run_lcs(ds, lcs).compute()
         ntimes = ds.time.shape[0]
         import os
+
+
         processes = os.cpu_count() -1
         nbins = int(ntimes/processes)
         ds_groupss = list(ds.groupby_bins('time', bins=nbins))
