@@ -13,7 +13,7 @@ if __name__ == '__main__':
     # script_paths = ['/home/users/gmpp/phdlib/download_era/download_era_viwvn.py',]
     script_paths = [
                     #this_file_path / 'download_era_viwvn.py',
-                    this_file_path / 'download_humid.py',
+                    this_file_path / 'download_solar.py',
                     #this_file_path / 'download_era_tcwv.py'
     ]
     years = np.array([2020])
