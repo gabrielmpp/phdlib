@@ -2,6 +2,8 @@ from mia_lib.miacore import xrumap as xru
 from pathlib import Path
 import xarray as xr
 import os
+
+
 emd_kwargs = dict(  # DEFAULT EMD KWARGS - don't change here
     energy_ratio_thr=0.2,
     std_thr=0.2,
