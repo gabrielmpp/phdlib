@@ -9,20 +9,33 @@ import matplotlib
 dask.config.set(scheduler='threads')  # Global config
 dask.config.set(pool=ThreadPool(20))  # To avoid omp error
 import xarray as xr
+from statsmodels.sandbox.regression.predstd import wls_prediction_std
 import scipy.signal as signal
 import xarray as xr
 import matplotlib as mpl
 # mpl.use('Agg')
 import matplotlib.pyplot as plt
+from scipy.signal import find_peaks
+import statsmodels.api as sm
+
 from typing import Optional, List, Tuple
 import pandas as pd
 import numpy as np
 from phdlib.utils.xrumap import autoencoder as xru
 from scipy.signal import hilbert
+from sklearn.cluster import KMeans
 
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+from sklearn.linear_model import LinearRegression
+from scipy import stats
 
+regions = dict(
+    sebr_coords=dict(lon=slice(-52, -40), lat=slice(-15, -30)),
+    nbr_coords=dict(lon=slice(-70, -55), lat=slice(0, -15)),
+    nebr_coords=dict(lon=slice(-45, -35), lat=slice(-3,-10)),
+    sacz_coords=dict(lon=slice(-50, -45), lat=slice(-15, -20)),
+)
 states_provinces = cfeature.NaturalEarthFeature(
     category='cultural',
     name='admin_1_states_provinces_lines',
@@ -409,33 +422,402 @@ def plot_periods(periods):
         plt.savefig(f'figs/plot_{time}.png')
         plt.close()
 
+
+
+
 sp = dict(lat=-23, lon=-45, method='nearest')
 
 
-regions = dict(
-    sebr_coords=dict(lon=slice(-50, -40), lat=slice(-20, -30)),
-    nbr_coords=dict(lon=slice(-70, -55), lat=slice(0, -15)),
-    nebr_coords=dict(lon=slice(-45, -35), lat=slice(-3,-10)),
-    sacz_coords=dict(lon=slice(-50, -45), lat=slice(-15, -20)),
-)
+spc = xr.open_dataarray('/home/gab/phd/data/ds_ceemdan.nc')
+masks_dict = dict()
 
-spc = xr.open_dataarray('/home/gab/phd/data/ds_emd_sp.nc')
-plt.style.use('seaborn')
-spc.plot(row='encoded_dims', aspect=5, color='black')
-plt.savefig('figs/ceemdan.pdf')
-residual = spc.isel(encoded_dims=-1)
-energy_residual = (residual ** 2).mean('time')
 pseudo_imfs = spc.isel(encoded_dims=slice(0, -2)) # removing residual and noise
 
-from scipy.signal import find_peaks
-peaks_list = []
-for imf in pseudo_imfs.encoded_dims.values:
-    peaks, _ = find_peaks(pseudo_imfs.sel(encoded_dims=imf).values)
-    peaks_list.append(  len(peaks))
-npeaks = xr.DataArray(peaks_list, dims=['encoded_dims'], coords=dict(encoded_dims=pseudo_imfs.coords['encoded_dims'].values) )
-period = pseudo_imfs.time.shape[0]/npeaks
-period_labels = [str(round(p,1) )for p in period.values]
-energy_density = (pseudo_imfs ** 2).mean('time') / (energy_residual)
+
+region_list=['sebr_coords', 'sacz_coords',]
+fig, axs = plt.subplots(2, 2, sharey=True)
+
+for region in region_list:
+    peaks = xr.apply_ufunc(lambda x: len(find_peaks(x)[0]), pseudo_imfs.sel(**regions[region], encoded_dims=slice(0,9)), input_core_dims=[['time']], vectorize=True,
+                            dask='allowed', output_dtypes=[np.float32])
+
+
+    period = pseudo_imfs.time.shape[0]/peaks
+    period = period.where(period != np.inf, np.nan)
+    period_labels = [str(round(p,1) )for p in period.mean(['lat', 'lon']).values]
+    period_labels_max = [str(round(p,1) )for p in period.max(['lat', 'lon']).values]
+    period_labels_min = [str(round(p,1) )for p in period.min(['lat', 'lon']).values]
+    energy_total = ((pseudo_imfs.sel(encoded_dims=slice(0,9), **regions[region]) ** 2)**0.5).mean('time')
+
+    energy_season = ((pseudo_imfs.sel(encoded_dims=slice(0,9), **regions[region]) ** 2)**0.5).groupby('time.season').mean('time')
+    tot_energy = energy_season.sum('encoded_dims').values
+    energy_season['accumulated energy'] = ('encoded_dims', 'season', 'lat','lon',), \
+                                          [energy_season.sel(encoded_dims=slice(0, ed)).sum('encoded_dims').values/tot_energy for ed in energy_season.encoded_dims.values]
+
+
+    for i, season in enumerate(energy_season.season.values):
+        ax = axs.flatten()[i]
+        ax.plot(energy_season.encoded_dims.values, energy_season.sel(season=season).mean(['lat', 'lon']).values)
+        ax.plot(energy_total.encoded_dims.values, energy_total.mean(['lat', 'lon']).values, color='black')
+        ax.set_title(season)
+        ax.set_xlabel('Pseudo-IMF from CEEMDAN')
+        ax.set_ylabel('Mean energy (mm)')
+
+plt.show()
+
+peaks = xr.apply_ufunc(lambda x: len(find_peaks(x)[0]), pseudo_imfs.sel(encoded_dims=slice(0, 9)),
+                       input_core_dims=[['time']], vectorize=True,
+                       dask='allowed', output_dtypes=[np.float32])
+
+period = pseudo_imfs.time.shape[0] / peaks
+period = period.where(period != np.inf, np.nan)
+pseudo_imfs['month'] = 'time', [pd.Timestamp(x).strftime('%m') for x in pseudo_imfs.time.values]
+pseudo_imfs['year'] = 'time', [pd.Timestamp(x).strftime('%Y') for x in pseudo_imfs.time.values]
+
+energy_total = ((pseudo_imfs.sel(encoded_dims=slice(0, 9)) ** 2) ** 0.5).groupby('time.season').mean('time')
+
+
+for i, encoded_dim in enumerate(energy_total.encoded_dims.values):
+    fig, axs = plt.subplots(1, 2, subplot_kw=dict(projection=ccrs.PlateCarree()))#, figsize=[14, 10])
+    p1 = energy_total.isel(encoded_dims=encoded_dim).sel(season='DJF').plot.contourf(title=None,vmin=0, levels=9,vmax=8,ax=axs[1],add_label=True, cmap='BrBG', cbar_kwargs=dict(orientation='horizontal'))
+    p2 = period.sel(encoded_dims=encoded_dim).plot.contourf(levels=14,title=None, cmap='RdBu', ax =axs[0],add_label=True, cbar_kwargs=dict(orientation='horizontal'))
+    # period.sel(encoded_dims=encoded_dim).plot.contour(levels=[5,8, 15], cmap='Greys', ax =axs[0], add_colorbar=False)
+
+    for ax in axs:
+        ax.coastlines()
+    axs[0].set_title('IMF ' + str (i) + ' average period (days)')
+    axs[1].set_title('IMF ' + str (i) + ' average power (mm/day)')
+
+    plt.tight_layout()
+    plt.savefig(f'figs/imf_{i}.png')
+    plt.close()
+
+
+# ---- Cluster analysis ----- #
+
+
+
+IMF_groups ={
+    '0 - 7': slice(0, 7),
+    # '2 - 3': slice(2, 3),
+    # '4 - 5': slice(4, 5),
+
+    # '6 - 9': slice(6, 9)
+}
+
+nclusterss = np.arange(1, 10, 1)
+inertiass = dict.fromkeys(IMF_groups.keys())
+for imf_group in IMF_groups.keys():
+    edims = IMF_groups[imf_group]
+    data_to_cluster = np.log(period.sel(encoded_dims=edims).stack({'points': ['lat', 'lon']}). \
+        transpose('points', 'encoded_dims').dropna('points'))
+    weights = np.log(energy_total.sel(season='DJF').stack({'points': ['lat', 'lon']}).dropna('points'). \
+        sel(encoded_dims=edims).sum('encoded_dims').values)
+
+    inertiass[imf_group] = []
+    for nclusters in nclusterss:
+
+        km = KMeans(n_clusters=nclusters)
+        clusterized_data = data_to_cluster.isel(encoded_dims=0).drop('encoded_dims').\
+        copy(data=km.fit_predict(data_to_cluster)).unstack().sortby('lat').sortby('lon').unstack()
+        inertiass[imf_group].append(km.inertia_)
+
+    inertiass[imf_group] = inertiass[imf_group] / inertiass[imf_group][0]
+
+plt.style.use('seaborn')
+keys = inertiass.keys()
+for key in keys:
+    inertias = inertiass[key]
+    plt.plot(nclusterss, inertias)
+
+plt.hlines([0.2], xmin=nclusterss[0], xmax=nclusterss[-1], linestyle='--')
+plt.xlabel('Number of clusters')
+plt.ylabel('Sum of squared distances to the center of the clusters')
+plt.savefig('figs/elbow_test.pdf')
+
+# Now we determined 4 clusters for IMFS 0-1 and 3 clusters for the others
+
+IMF_groups =[
+    [slice(0, 7), 3], # second position of the list is the number of clusters required
+     [slice(2, 3), 3],
+     [slice(4, 5), 3],
+    ]
+clusterized_data = []
+cluster_centers = []
+for imf_group in IMF_groups:
+    edims = imf_group[0]
+    data_to_cluster = period.sel(encoded_dims=edims).stack({'points': ['lat', 'lon']}). \
+        transpose('points', 'encoded_dims').dropna('points')
+    weights = energy_total.sel(season='DJF').stack({'points': ['lat', 'lon']}).dropna('points'). \
+        sel(encoded_dims=edims).sum('encoded_dims').values
+    km = KMeans(n_clusters=imf_group[1])
+
+    clusterized_data.append(
+        data_to_cluster.isel(encoded_dims=0).drop('encoded_dims'). \
+        copy(data=km.fit_predict(np.log(data_to_cluster), sample_weight=np.log(weights))).unstack().sortby('lat').sortby(
+        'lon').unstack()
+    )
+    cluster_centers.append(km.cluster_centers_)
+
+import matplotlib.ticker as ticker
+def format_label(x, pos):
+    if pos < cluster_centers[0].shape[0]:
+        return np.round(cluster_centers[0][pos],1)
+    else:
+        return None
+format=ticker.FuncFormatter(format_label)
+clusterized_data = xr.concat(clusterized_data, dim=pd.Index(['0 - 7', '2 - 3', '4 - 5'], name='IMF_groups'))
+fig, ax = plt.subplots(1, 1, subplot_kw=dict(projection=ccrs.PlateCarree()))
+p = clusterized_data.sel(IMF_groups='0 - 7').plot.contourf(hatches=['X','+'],levels=4,cmap='rainbow', ax=ax, transform=ccrs.PlateCarree(),
+                                                      add_labels=True, add_colorbar=True)
+    # c = clusterized_data.sel(IMF_groups='4 - 5').plot.contour(levels=6,cmap='black', ax=ax, transform=ccrs.PlateCarree())
+    # plt.clabel(c, inline=1,fmt = '%1.0f')
+    # cbar = fig.colorbar(p, format=format)
+    # cbar.ax.set_yticklabels(np.round(cluster_centers[0][:,0], 1))  # horizontal colorbar
+ax.coastlines()
+plt.savefig('figs/regions_log.pdf')
+
+edims1 = '0 - 7'
+
+d1 = clusterized_data.sel(IMF_groups=edims1)
+
+a = pseudo_imfs.where(d1 == 0).mean(['lat', 'lon'])#.shift(time=5).dropna('time')
+b = pseudo_imfs.where(d1 == 2).mean([ 'lat', 'lon'])
+b = b.sel(time=a.time)
+a.name='B'
+b.name='C'
+ds = xr.merge([a, b])
+ds.plot.scatter(x='C', y='B', hue='month', cmap='tab10', hue_style='discrete', col='encoded_dims', col_wrap=3)
+plt.show()
+b = b.sel(time=a.time)
+for month in a.month:
+    plt.scatter(a, b, alpha=0.2)
+    aa = a.where(a.month == month, drop=True).values
+    bb = b.where(b.month == month, drop=True).values
+    lm = LinearRegression()
+    y = lm.fit(aa.reshape(-1,1), bb.reshape(-1,1))
+    plt.plot(aa, lm.predict(aa.reshape(-1,1)))
+
+plt.legend(np.unique(a.month.values).tolist())
+
+plt.show()
+plt.style.use('seaborn')
+
+a.groupby('time.month').var('time').plot.line(x='month')
+b.groupby('time.month').var('time').plot.line(x='month')
+
+plt.show()
+
+cluster_centers[0][0]
+cluster_centers[0][1]
+
+from statsmodels.regression.rolling import RollingOLS
+from statsmodels.regression.recursive_ls import RecursiveLS
+colors = [float(x) for x in a.where(b.month == '01', drop=True).year.values]
+Y = a.where(b.month == '01', drop=True).sel(encoded_dims=[3]).sum('encoded_dims').values
+X = b.where(a.month == '01', drop=True).sel(encoded_dims=[2]).transpose('time', ...).values
+X = sm.add_constant(X )
+mod = sm.OLS(Y,X).fit()
+from contextlib import redirect_stdout
+with open('regression_2nd_IMF_C_3rd_IMF_B.txt', 'w') as file:
+    with redirect_stdout(file):
+        print(mod.summary2())
+prstd, iv_l, iv_u = wls_prediction_std(mod, alpha=0.1)
+
+
+plt.style.use('seaborn-deep')
+fig, ax = plt.subplots(figsize=(8,6))
+
+ax.scatter(X[:,1], Y, )
+ax.plot(X[:,1], mod.fittedvalues, 'r', label="Linear regression")
+ax.plot(X[:,1], iv_u, c='gray', linestyle='-' )
+ax.plot(X[:,1], iv_l, c='gray', linestyle='-',label='Conficence band')
+ax.legend(loc='best')
+ax.set_ylabel('First IMF in region C (mm/day)')
+ax.set_xlabel('First IMF in region A (mm/day)')
+plt.savefig('figs/linear_regression_C_A.pdf')
+
+p_values = fii.summary2().tables[1]['P>|t|']
+
+plt.scatter(X, Y)
+           # c=a.where(b.month == '01', drop=True).year, cmap='rainbow')
+plt.legend()
+
+#---- ROLLING OLS -----#
+Y = a.sel(encoded_dims=3).to_dataframe(name='Y')
+X = a.sel(encoded_dims=1).transpose('time', ...).shift(time=8).to_dataframe(name='X')
+
+rols = RollingOLS(Y['Y'], X[['X']],window=35 )
+rres = rols.fit()
+
+params = rres.params
+plt.style.use('seaborn')
+fig = rres.plot_recursive_coefficient(figsize=(14,6))
+plt.ylim([-1, 1])
+plt.show()
+
+X['X'].plot()
+plt.show()
+XX = sm.tsa.tsatools.lagmat(X['X'], maxlag=10)
+rols = RollingOLS(Y['Y'], XX, window=60)
+rres = rols.fit()
+plt.style.use('seaborn')
+fig = rres.plot_recursive_coefficient( figsize=(14,6))
+plt.ylim([-1.5, 3])
+plt.title(None)
+plt.show()
+
+
+lm = LinearRegression()
+lm.fit(X,
+       Y.values.reshape(-1,1))
+y = lm.predict(X)
+plt.plot(X[:, 0], y, color='black')
+lm.coef_
+lm.intercept_
+lm.score(X,Y)
+plt.show()
+a.sel(encoded_dims=3, time='2011').plot()
+b.sel(encoded_dims=3, time='2011').plot()
+plt.legend(['Amazon', 'SEBR'])
+plt.show()
+plt.style.available
+
+plt.scatter(b.sel(encoded_dims=3, time='2011'),
+            a.sel(encoded_dims=3, time='2011'), alpha=0.7,
+            c=a.sel(time='2011').month, cmap='rainbow')
+plt.show()
+
+lr  = LR()
+lr.fit(x=b, y=a)
+
+(a).sel(time='2012').plot()
+b.sel(time='2012').plot()
+c.sel(time='2010').plot()
+
+
+
+#----- EOT -----#
+def covariance_gufunc(x, y):
+    return ((x - x.mean(axis=-1, ))
+            * (y - y.mean(axis=-1,))).mean(axis=-1)
+
+def pearson_correlation_gufunc(x, y):
+    return covariance_gufunc(x, y) / (x.std(axis=-1) * y.std(axis=-1))
+
+from scipy import stats
+N_points = 1
+edim=3
+time_series_original = pseudo_imfs.sel(encoded_dims=edim).where(d1==2).mean(['lat', 'lon'])
+time_series = time_series_original.copy()
+
+data = pseudo_imfs.sel(encoded_dims=edim).where(d1==2)
+poss = []
+for i in range(N_points):
+    # ---- Finding best correlation ---- #
+    pearson = pearson_correlation_gufunc(data.transpose(..., 'time'), time_series_original).unstack().sortby('lat').sortby('lon')
+    cov = covariance_gufunc(data.transpose(..., 'time'), time_series).unstack().sortby('lat').sortby('lon')
+    max_pos = pearson[np.unravel_index(np.argmax(pearson**2), pearson.shape)]
+    max_pos.name = str(i)
+    # ---- Training linear model and subtracting from data ---- #
+    lm = LinearRegression()
+    Y = data.stack({'points': ['lat', 'lon']}).dropna('points')
+    X = time_series_original.values
+    lm.fit(X.reshape([-1,1]), Y)
+    preds = Y.copy(data=lm.predict(X.reshape([-1, 1]))).unstack().sortby('lat').sortby('lon')
+    # ---- Residual ---- #
+    time_series = data.sel(lat=max_pos.lat, lon=max_pos.lon).drop('lat').drop('lon')
+    data = data - preds
+
+    # ---- Plotting ---- #
+    fig, ax = plt.subplots(1, 1, subplot_kw={'projection': ccrs.PlateCarree()})
+    pearson.plot(ax=ax, transform=ccrs.PlateCarree())
+    ax.coastlines()
+    ax.scatter(max_pos.lon.values, max_pos.lat.values)
+    poss.append(max_pos)
+    plt.show()
+
+
+
+
+
+poss = xr.concat(poss, dim=pd.Index(np.arange(N_points),name='index'))
+time_series_amazon_point1_edim_2 = time_series
+time_series_sacz_point2_edim_2 = time_series
+time_series_amazon=time_series
+time_series.plot()
+plt.show()
+
+
+
+
+
+#---- ROLLING OLS -----#
+Y = time_series_sacz_point2_edim_2.to_dataframe(name='Y')
+X = time_series_amazon_point1_edim_2.to_dataframe(name='X')
+
+rols = RollingOLS(Y['Y'], X[['X']],window=60 )
+rres = rols.fit()
+
+params = rres.params
+plt.style.use('seaborn')
+fig = rres.plot_recursive_coefficient(figsize=(14,6))
+# plt.ylim()
+plt.show()
+
+
+
+
+np.correlate(stacked, time_series)
+cov_matrix = stats.pearsonr(stacked.values, y=time_series.values)
+cov_matrix = cov_matrix[np.triu_indices(cov_matrix.shape[0])]
+stacked
+cov_matrix.flatten().shape
+cov_matrix = xr.DataArray(cov_matrix, dims=[''])
+
+np.diag(cov_matrix).shape
+time_series.plot()
+plt.show()
+
+
+
+# energy_total = ((pseudo_imfs.sel(encoded_dims=slice(0, 9)) ** 2) ** 0.5).mean('time') / ((pseudo_imfs.sel(encoded_dims=slice(0, 9)) ** 2) ** 0.5).mean('time').sum('encoded_dims')
+
+
+
+
+
+
+
+
+spc['month'] = ('time'), [pd.Timestamp(x).strftime('%m') for x in spc.time.values]
+
+amazon_subseasonal = spc.sel(regions['nbr_coords']).sel(encoded_dims=3).where(spc.month=='01', drop=True).mean(['lat', 'lon']).values
+sacz_subseasonal = spc.sel(regions['sebr_coords']).sel(encoded_dims=3).where(spc.month=='01', drop=True).mean(['lat', 'lon']).values
+plt.plot(amazon_subseasonal)
+plt.plot(sacz_subseasonal)
+plt.show()
+lr = LinearRegression()
+lr.fit(amazon_subseasonal.reshape(-1,1), sacz_subseasonal.reshape(-1,1))
+predicted = lr.predict(amazon_subseasonal.reshape(-1,1))
+plt.scatter(amazon_subseasonal, sacz_subseasonal)
+plt.plot(amazon_subseasonal, predicted)
+plt.show()
+
+
+
+p=energy_season.sel(season='DJF').plot.contourf(levels=21, col='encoded_dims', col_wrap=3, vmax=8,cmap='BrBG',
+                                                subplot_kws={'projection': ccrs.PlateCarree()})
+for i, ax in enumerate(p.axes.flat):
+    ax.coastlines()
+    ax.set_title(period_labels_min[i] + '-' + period_labels[i] + '-' + period_labels_max[i])
+plt.show()
+
+
+
+
+
+# energy_density
 error_bar = np.sqrt(2*period/pseudo_imfs.time.shape[0])
 
 plt.bar(height=energy_density, x=np.arange(0,9,1), yerr=error_bar)
@@ -471,23 +853,17 @@ plt.plot(energy_density)
 spc = spc.sel(**regions['sacz_coords'])
 # spc = xr.apply_ufunc(lambda x, y: x - y, spc.groupby('time.month'), spc.groupby('time.month').mean('time')) # anomaly
 energy = ((spc.sel(encoded_dims=1))**2).sum()/spc.time.shape[0]
-f_spc = xr.apply_ufunc(lambda x: np.abs(np.fft.fft(x, axis=1)), spc)
+f_spc = xr.apply_ufunc(lambda x: np.abs(np.fft.fft(x, axis=2)), pseudo_imfs.sel(encoded_dims=slice(0,4)))
 freqs = np.fft.fftfreq(spc.time.shape[0])
 f_spc = f_spc.assign_coords(time=(freqs**-1)).rename({'time': 'logperiod'}).sortby('logperiod').isel(logperiod=slice(None,-1))
-(f_spc).sel( logperiod=slice(None, None),).plot.line(aspect=5,row='encoded_dims',x='logperiod', color='black')
-plt.semilogx()
+(f_spc).sel( logperiod=slice(None, None),).where(f_spc.logperiod>0, drop=True).plot.line(hue='encoded_dims',x='logperiod')
+plt.loglog()
 plt.xlabel('Log of the period')
 plt.savefig('figs/_ceemdan.pdf')
 plt.close()
 f_spc = f_spc.rename
 f_spc = f_spc.mean(['lat', 'lon'])
 f_spc.plot.line(x='time')
-masks_dict = dict()
-for region in regions.keys():
-    masks_dict[region] = dict(lon=(spc.lon < regions[region]['lon'].stop) & (spc.lon > regions[region]['lon'].start),
-                              lat=(spc.lat < regions[region]['lat'].stop) & (spc.lon > regions[region]['lat'].start))
-
-    spc[region] = ('lat', 'lon'), xr.zeros_like(spc.isel(time=0, encoded_dims=0)).where(~(masks_dict[region]['lat'] & masks_dict[region]['lon']), 1)
 
 spc = spc.chunk(dict(encoded_dims=spc.encoded_dims.values.shape[0]))
 spc=spc.isel(time=slice(None, 365))

@@ -14,7 +14,11 @@ if __name__ == '__main__':
     script_paths = [
                     #this_file_path / 'download_era_viwvn.py',
                     this_file_path / 'download_solar.py',
-                    #this_file_path / 'download_era_tcwv.py'
+                    this_file_path / 'download_uv.py',
+                    this_file_path / 'download_2mtmp.py',
+                    this_file_path / 'download_solar.py',
+                    this_file_path / 'download_humid.py',
+
     ]
     years = np.array([2020])
     jasmin = True  # also change config, paths and python
