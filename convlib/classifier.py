@@ -15,7 +15,7 @@ config_jasmin = {
     'tcwv_filename': 'tcwv_ERA5_6hr_{year}010100-{year}123118.nc',
     'time_freq': '6H',
     'chunks': {
-        'time': 10, }
+        'time': 1000, }
         ,
     'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-02-07T18:00:00'),
                    'latitude': slice(-80, 30),
@@ -178,6 +178,7 @@ class Classifier:
         parallel = self.parallel
         SETTLS_order = 2
         time_dir = 'backward'
+        print('get_xr_seq')
         u = get_xr_seq(u, 'time', [x for x in range(lcs_time_len)])
         u = u.dropna(dim='time', how='any')
         v = get_xr_seq(v, 'time', [x for x in range(lcs_time_len)])
@@ -221,8 +222,10 @@ class Classifier:
         import os
 
 
-        processes = os.cpu_count() -1
+        # processes = os.cpu_count() - 1
+        processes = 5
         nbins = int(ntimes/processes)
+        print('grouping')
         ds_groupss = list(ds.groupby_bins('time', bins=nbins))
         input_arrayss = []
         for label, group in ds_groupss: # have to do that because bloody groupby returns the labels
@@ -260,6 +263,7 @@ class Classifier:
                 for label, group in ds_groups:
                     ds_list.append(group.load())
                 if parallel:
+                    print('Starting parallel jobs')
                     with concurrent.futures.ProcessPoolExecutor(max_workers=processes) as executor:
                         for i, resulting_array in enumerate(executor.map(lcs, ds_list)):
                             array_list.append(resulting_array.chunk(dict(seq=1)))
@@ -293,9 +297,9 @@ if __name__ == '__main__':
     # lcs_time_len = int(sys.argv[4]) # * 6 hours intervals
     running_on = 'jasmin'
     lcs_type = 'attracting'
-    start_year = 2001
-    end_year = 2001
-    lcs_time_len = 4
+    start_year = 1980
+    end_year = 2009
+    lcs_time_len = int(sys.argv[1])
     config = config_jasmin
 
     config['array_slice_time']['time'] = slice(f'{start_year}-01-01T00:00:00', f'{end_year}-12-31T18:00:00')

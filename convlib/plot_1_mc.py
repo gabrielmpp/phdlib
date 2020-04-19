@@ -2,30 +2,22 @@ import xarray as xr
 import matplotlib as mpl
 
 mpl.use('Agg')
-from convlib.xr_tools import read_nc_files, createDomains
+from xr_tools.tools import read_nc_files, createDomains
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
-import meteomath
 import numpy as np
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.gridspec as gridspec
-from convlib.xr_tools import xy_to_latlon
-import cartopy.feature as cfeature
-from xrtools import xrumap as xru
+
 import pandas as pd
-from numba import jit
-import numba
-import convlib.xr_tools as xrtools
-import datetime
 
 
 if __name__ == '__main__':
 
     region = None
-    years = range(2000, 2001)
+    years = range(2001, 2002)
     lcstimelen = 6
-    MAG = xr.open_dataset('~/phdlib/convlib/data/xarray_mair_grid_basins.nc')
-    lcstimelens = [1, 4, 8, 16]
+    MAG = xr.open_dataset('~/phdscripts/phdlib/convlib/data/xarray_mair_grid_basins.nc')
+    lcstimelens = [ 4, 12 ]
     array_list = []
     for lcstimelen in lcstimelens:
         array_list.append(read_nc_files(region=region,
@@ -34,16 +26,16 @@ if __name__ == '__main__':
                                year_range=years))
     proj = ccrs.PlateCarree()
 
-    fig = plt.figure(figsize=[25, 20])
+    fig = plt.figure(figsize=[12, 10])
     gs = gridspec.GridSpec(2, 3, width_ratios=[1, 1, 0.05])
     axs = dict()
 
-    axs['6H'] = fig.add_subplot(gs[0, 0], projection=proj)
-    axs['1D'] = fig.add_subplot(gs[0, 1], projection=proj)
-    axs['2D'] = fig.add_subplot(gs[1, 0], projection=proj)
-    axs['4D'] = fig.add_subplot(gs[1, 1], projection=proj)
-    list_of_keys = ['6H', '1D', '2D', '4D']
-    time = '2000-02-10T12:00:00'
+    axs['1D'] = fig.add_subplot(gs[0, 0], projection=proj)
+    axs['3D'] = fig.add_subplot(gs[0, 1], projection=proj)
+    # axs['2D'] = fig.add_subplot(gs[1, 0], projection=proj)
+    # axs['4D'] = fig.add_subplot(gs[1, 1], projection=proj)
+    list_of_keys = ['1D', '3D']
+    time = '2001-02-10T12:00:00'
     vmaxs = [2, 2, 2, 2]
     time_scaling = (3600/86400)*6*np.array(lcstimelens)
     vmins = [0 for x in array_list]
@@ -53,16 +45,19 @@ if __name__ == '__main__':
         ax.tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
 
 
-
+    plot_domain = dict(
+        latitude=slice(-70, 10),
+        longitude=slice(-100,0)
+    )
     for i in range(len(lcstimelens)):
         plot_array = xr.apply_ufunc(lambda x: time_scaling[i]**(-1) * np.log(x),
                                     array_list[i].sel(time=pd.Timestamp(time)+pd.Timedelta(list_of_keys[i]))**0.5)
 
         ax = axs[list_of_keys[i]]
 
-        plot = plot_array.sel(latitude=slice(-60,10), longitude=slice(-90,-30)).plot.contourf(cmap='Blues',vmin=0, vmax=2, levels=30, add_colorbar=False, ax=ax,
+        plot = plot_array.sel(plot_domain).plot.contourf(cmap='BrBG',vmin=0, vmax=2, levels=30, add_colorbar=False, ax=ax,
                                                           transform=ccrs.PlateCarree())
-        plot_array.sel(latitude=slice(-60,10), longitude=slice(-90,-30)).plot.contour(levels=[1], color='black',ax=ax)
+        # plot_array.sel(plot_domain).plot.contour(levels=[1], color='black',ax=ax)
         ax.coastlines()
 
     # Add titles
@@ -73,7 +68,7 @@ if __name__ == '__main__':
     plt.colorbar(plot, cax)
     plt.tight_layout()
 
-    plt.savefig(f'tempfigs/daily_figs/{time}.png')
+    plt.savefig(f'tempfigs/{time}.png')
     plt.close()
 
 

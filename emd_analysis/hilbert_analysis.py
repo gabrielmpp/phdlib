@@ -539,8 +539,8 @@ plt.savefig('figs/elbow_test.pdf')
 
 IMF_groups =[
     [slice(0, 7), 3], # second position of the list is the number of clusters required
-     [slice(2, 3), 3],
-     [slice(4, 5), 3],
+     # [slice(2, 3), 3],
+     # [1slice(4, 5), 3],
     ]
 clusterized_data = []
 cluster_centers = []
@@ -566,7 +566,7 @@ def format_label(x, pos):
     else:
         return None
 format=ticker.FuncFormatter(format_label)
-clusterized_data = xr.concat(clusterized_data, dim=pd.Index(['0 - 7', '2 - 3', '4 - 5'], name='IMF_groups'))
+clusterized_data = xr.concat(clusterized_data, dim=pd.Index(['0 - 7'], name='IMF_groups'))
 fig, ax = plt.subplots(1, 1, subplot_kw=dict(projection=ccrs.PlateCarree()))
 p = clusterized_data.sel(IMF_groups='0 - 7').plot.contourf(hatches=['X','+'],levels=4,cmap='rainbow', ax=ax, transform=ccrs.PlateCarree(),
                                                       add_labels=True, add_colorbar=True)
@@ -580,6 +580,9 @@ plt.savefig('figs/regions_log.pdf')
 edims1 = '0 - 7'
 
 d1 = clusterized_data.sel(IMF_groups=edims1)
+
+aa = pseudo_imfs.where(d1==0, drop=True)
+(aa**2).mean(['lat', 'lon', 'time'])
 
 a = pseudo_imfs.where(d1 == 0).mean(['lat', 'lon'])#.shift(time=5).dropna('time')
 b = pseudo_imfs.where(d1 == 2).mean([ 'lat', 'lon'])
@@ -707,16 +710,17 @@ def pearson_correlation_gufunc(x, y):
 
 from scipy import stats
 N_points = 1
-edim=3
-time_series_original = pseudo_imfs.sel(encoded_dims=edim).where(d1==2).mean(['lat', 'lon'])
+edim_amazon=1
+edim_sacz=2
+time_series_original = pseudo_imfs.sel(encoded_dims=edim_amazon).where(d1==2).mean(['lat', 'lon'])
 time_series = time_series_original.copy()
 
-data = pseudo_imfs.sel(encoded_dims=edim).where(d1==2)
+# First Amazon
+data = pseudo_imfs.sel(encoded_dims=edim_amazon).where(d1==2)
 poss = []
 for i in range(N_points):
     # ---- Finding best correlation ---- #
     pearson = pearson_correlation_gufunc(data.transpose(..., 'time'), time_series_original).unstack().sortby('lat').sortby('lon')
-    cov = covariance_gufunc(data.transpose(..., 'time'), time_series).unstack().sortby('lat').sortby('lon')
     max_pos = pearson[np.unravel_index(np.argmax(pearson**2), pearson.shape)]
     max_pos.name = str(i)
     # ---- Training linear model and subtracting from data ---- #
@@ -737,32 +741,55 @@ for i in range(N_points):
     poss.append(max_pos)
     plt.show()
 
+time_series_amazon = time_series
 
+## and then SE
 
+N_points = 1
+time_series_original = pseudo_imfs.sel(encoded_dims=edim_sacz).where(d1==2).mean(['lat', 'lon'])
 
+data = pseudo_imfs.sel(encoded_dims=edim_sacz).where(d1==2)
+poss = []
+for i in range(N_points):
+    # ---- Finding best correlation ---- #
+    pearson = pearson_correlation_gufunc(data.transpose(..., 'time'), time_series_original).unstack().sortby('lat').sortby('lon')
+    max_pos = pearson[np.unravel_index(np.argmax(pearson**2), pearson.shape)]
+    max_pos.name = str(i)
+    # ---- Training linear model and subtracting from data ---- #
+    lm = LinearRegression()
+    Y = data.stack({'points': ['lat', 'lon']}).dropna('points')
+    X = time_series_original.values
+    lm.fit(X.reshape([-1,1]), Y)
+    preds = Y.copy(data=lm.predict(X.reshape([-1, 1]))).unstack().sortby('lat').sortby('lon')
+    # ---- Residual ---- #
+    time_series = data.sel(lat=max_pos.lat, lon=max_pos.lon).drop('lat').drop('lon')
+    data = data - preds
 
-poss = xr.concat(poss, dim=pd.Index(np.arange(N_points),name='index'))
-time_series_amazon_point1_edim_2 = time_series
-time_series_sacz_point2_edim_2 = time_series
-time_series_amazon=time_series
-time_series.plot()
-plt.show()
+    # ---- Plotting ---- #
+    fig, ax = plt.subplots(1, 1, subplot_kw={'projection': ccrs.PlateCarree()})
+    pearson.plot(ax=ax, transform=ccrs.PlateCarree())
+    ax.coastlines()
+    ax.scatter(max_pos.lon.values, max_pos.lat.values)
+    poss.append(max_pos)
+    plt.show()
+time_series_sacz = time_series
 
 
 
 
 
 #---- ROLLING OLS -----#
-Y = time_series_sacz_point2_edim_2.to_dataframe(name='Y')
-X = time_series_amazon_point1_edim_2.to_dataframe(name='X')
+from statsmodels.regression.rolling import RollingOLS
+Y = time_series_sacz.to_dataframe(name='Y')
+X = time_series_amazon.shift(time=0).to_dataframe(name='X')
 
-rols = RollingOLS(Y['Y'], X[['X']],window=60 )
+rols = RollingOLS(Y['Y'], X[['X']],window=120 )
 rres = rols.fit()
 
 params = rres.params
 plt.style.use('seaborn')
 fig = rres.plot_recursive_coefficient(figsize=(14,6))
-# plt.ylim()
+plt.ylim([-2, 2])
 plt.show()
 
 

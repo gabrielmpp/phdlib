@@ -4,8 +4,9 @@ if __name__ == '__main__':
     logs_path = '/home/users/gmpp/logs/'
     python = '/home/users/gmpp/miniconda2/envs/phd37/bin/python'
     script_path = '/home/users/gmpp/phdlib/convlib/classifier2.py'
-    lcs_time_lens = [16]
-    years = [x for x in range(1980, 2010)]
+    lcs_time_lens = [1, 16]
+    # years = [x for x in range(1980, 2010)]
+    years=[2020]
     for year in years:
         for lcs_time_len in lcs_time_lens:
             subprocess.call(['bsub',
