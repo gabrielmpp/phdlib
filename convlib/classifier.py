@@ -178,11 +178,11 @@ class Classifier:
         parallel = self.parallel
         SETTLS_order = 2
         time_dir = 'backward'
-        # print('get_xr_seq')
-        # u = get_xr_seq(u, 'time', [x for x in range(lcs_time_len)])
-        # u = u.dropna(dim='time', how='any')
-        # v = get_xr_seq(v, 'time', [x for x in range(lcs_time_len)])
-        # v = v.dropna(dim='time', how='any')
+        print('get_xr_seq')
+        u = get_xr_seq(u, 'time', [x for x in range(lcs_time_len)])
+        u = u.dropna(dim='time', how='any')
+        v = get_xr_seq(v, 'time', [x for x in range(lcs_time_len)])
+        v = v.dropna(dim='time', how='any')
 
         shearless = False
 
@@ -212,7 +212,7 @@ class Classifier:
         lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='seq', shearless=shearless, SETTLS_order=SETTLS_order)
 
         ds = xr.merge([u, v])
-        # ds = ds.chunk(dict(seq=None))
+        ds = ds.chunk(dict(seq=None))
         # a = ds.groupby('time').apply(lcs)
         # def run_lcs(ds, lcs):
         #     return xr.apply_ufunc(lambda x, y: lcs(u=x, v=y), ds.u, ds.v, input_core_dims=[['seq'], ['seq']],
@@ -222,10 +222,10 @@ class Classifier:
         import os
 
 
-        # processes = os.cpu_count() - 1
-        processes = 5
+        processes = os.cpu_count() - 1
+        # processes = 5
         nbins = int(ntimes/processes)
-        print('grouping nbis {}'.format(str(nbins)))
+        print('grouping')
         ds_groupss = list(ds.groupby_bins('time', bins=nbins))
         input_arrayss = []
         for label, group in ds_groupss: # have to do that because bloody groupby returns the labels
@@ -243,12 +243,9 @@ class Classifier:
             #           v_list.append(resulting_array[1])
             #          sys.stderr.write('\rdone {0:%}'.format(i/len(input_arrays)))
             else:
-                for i, time in enumerate(ds.time.values):
-                    print('Running time {}'.format(str(time)))
-                    input_ds = ds.isel(time=slice(i, i + lcs_time_len))
-                    input_ds = input_ds.load()
-                    x_departure, y_departure = parcel_propagation(input_ds.u.copy(), input_ds.v.copy(), timestep,
-                                                                  propdim='time',
+                for i, input_array in enumerate(input_arrays):
+                    x_departure, y_departure = parcel_propagation(input_array.u.copy(), input_array.v.copy(), timestep,
+                                                                  propdim='seq',
                                                                   SETTLS_order=SETTLS_order)
                     x_list.append(x_departure)
                     y_list.append(y_departure)
@@ -261,18 +258,15 @@ class Classifier:
         else:
             array_list = []
             for input_arrays in input_arrayss:
+                ds_groups = input_arrays.groupby('time')
                 ds_list = []
-                for i, time in enumerate(input_arrays.time.values):
-                    print('Running time {}'.format(str(time)))
-                    input_ds = ds.isel(time=slice(i, i + lcs_time_len))
-                    input_ds = input_ds.load()
-                    ds_list.append(input_ds)
-
+                for label, group in ds_groups:
+                    ds_list.append(group.load())
                 if parallel:
                     print('Starting parallel jobs')
                     with concurrent.futures.ProcessPoolExecutor(max_workers=processes) as executor:
                         for i, resulting_array in enumerate(executor.map(lcs, ds_list)):
-                            array_list.append(resulting_array.chunk(dict(time=1)))
+                            array_list.append(resulting_array.chunk(dict(seq=1)))
                             sys.stderr.write('\rdone {0:%}'.format(i/len(input_arrays)))
                 else:
                     for i, input_array in enumerate(ds_list):
@@ -303,7 +297,7 @@ if __name__ == '__main__':
     # lcs_time_len = int(sys.argv[4]) # * 6 hours intervals
     running_on = 'jasmin'
     lcs_type = 'attracting'
-    start_year = 2008
+    start_year = 2000
     end_year = 2009
     lcs_time_len = int(sys.argv[1])
     config = config_jasmin
@@ -322,7 +316,10 @@ if __name__ == '__main__':
     classified_array1 = classifier(config, method='lagrangian', lcs_type=lcs_type, lcs_time_len=lcs_time_len,
                                    find_departure=find_departure, parallel=parallel)
     print("*---- Saving file ----*")
-    if find_departure:
-        classified_array1.to_netcdf(f'{outpath}SL_{lcs_type}_{start_year}_{end_year}_departuretimelen_{lcs_time_len}_v2.nc')
-    else:
-        classified_array1.to_netcdf(f'{outpath}SL_{lcs_type}_{start_year}_{end_year}_lcstimelen_{lcs_time_len}_v2.nc')
+
+    for year in range(start_year, end_year + 1):
+
+        if find_departure:
+            classified_array1.sel(year=year).to_netcdf(f'{outpath}SL_{lcs_type}_{year}_departuretimelen_{lcs_time_len}_v2.nc')
+        else:
+            classified_array1.sel(year=year).to_netcdf(f'{outpath}SL_{lcs_type}_{year}_lcstimelen_{lcs_time_len}_v2.nc')

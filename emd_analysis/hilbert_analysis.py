@@ -427,10 +427,14 @@ def plot_periods(periods):
 
 sp = dict(lat=-23, lon=-45, method='nearest')
 
+basin = 'Tiete'
+MAG = xr.open_dataset('../convlib/data/xarray_mair_grid_basins.nc')
+MAG = MAG[basin]
+
 
 spc = xr.open_dataarray('/home/gab/phd/data/ds_ceemdan.nc')
 masks_dict = dict()
-
+MAG = MAG.interp(lat=spc.lat, lon=spc.lon, method='nearest')
 pseudo_imfs = spc.isel(encoded_dims=slice(0, -2)) # removing residual and noise
 
 
@@ -475,6 +479,79 @@ pseudo_imfs['month'] = 'time', [pd.Timestamp(x).strftime('%m') for x in pseudo_i
 pseudo_imfs['year'] = 'time', [pd.Timestamp(x).strftime('%Y') for x in pseudo_imfs.time.values]
 
 energy_total = ((pseudo_imfs.sel(encoded_dims=slice(0, 9)) ** 2) ** 0.5).groupby('time.season').mean('time')
+
+
+prec_in_tiete = spc.sum('encoded_dims').where(MAG[basin]==1, drop=True).mean(['lat', 'lon'])
+
+
+f_tiete = xr.apply_ufunc(lambda x: np.abs(np.fft.fft(x, n=35)), prec_in_tiete.isel(time=slice(None,35)))
+freqs = np.fft.fftfreq(f_tiete.time.shape[0])
+f_tiete = f_tiete.assign_coords(time=np.log(freqs**-1)).rename({'time': 'logperiod'}).sortby('logperiod').isel(logperiod=slice(None,-1))
+(f_tiete).sel( logperiod=slice(None, None),).where(f_tiete.logperiod>0, drop=True).plot.line(hue='encoded_dims',x='logperiod')
+plt.xticks(np.log(np.arange(1, 35, 3)), np.arange(1,35, 3))
+plt.xlabel('Period (days)')
+plt.ylabel('Energy (mm)')
+plt.title('Fourier spectrum of the average daily precipitation over the Tiete basin')
+plt.savefig('figs/fourier_tiete.pdf')
+plt.close()
+
+import cartopy.feature as cfeature
+ocean_50m = cfeature.NaturalEarthFeature('physical', 'ocean', '50m',
+                                        edgecolor='face',
+                                        facecolor=cfeature.COLORS['water'])
+rivers = cfeature.NaturalEarthFeature(
+    category='physical', name='rivers_lake_centerlines',
+    scale='10m', facecolor='none', edgecolor='blue')
+states_provinces = cfeature.NaturalEarthFeature(
+    category='cultural',
+    name='admin_1_states_provinces_lines',
+    scale='50m', edgecolor='k',
+    facecolor='None')
+fig, ax = plt.subplots(1,1, subplot_kw={'projection': ccrs.PlateCarree()})
+MAG.where(MAG[basin]==1, drop=True).plot.contourf(yticks=np.arange(-30, -15, 5), xticks=np.arange(-55, -40, 5),transform=ccrs.PlateCarree(),ax=ax, add_labels=True, add_colorbar=False)
+ax.set_xlim([-60,-40])
+ax.set_ylim([-35, -15])
+ax.coastlines()
+ax.add_feature(cfeature.LAND)
+ax.add_feature(cfeature.OCEAN)
+ax.add_feature(cfeature.COASTLINE, linewidth=2)
+ax.add_feature(states_provinces, linewidth=1)
+ax.add_feature(cfeature.BORDERS, linewidth=2)
+ax.add_feature(rivers)
+ax.grid(False)
+plt.tight_layout()
+
+plt.scatter([-46.5, -47.08,-47.88, -49.03 ],[ -23.5, -22.8,-21.99, -22.36 ], marker='x')
+plt.savefig('figs/map.pdf')
+plt.show()
+
+prds_basin = period.where(MAG[basin] == 1, drop=True).mean(['lat', 'lon'])
+
+plt.style.use('ggplot')
+
+
+energy_total_basin = energy_total.where(MAG[basin] == 1, drop=True).mean(['lat', 'lon'])-energy_total.where(MAG[basin] == 1, drop=True).mean(['lat', 'lon', 'season'])
+
+for season in energy_total_basin.season.values:
+    y = (energy_total_basin.sel(season=season).values)
+    x = np.log(prds_basin.values)
+    plt.plot(x, y)
+    plt.scatter(x, y)
+
+# confidence1 = - np.log(prds_basin.values) + 0.675*np.sqrt(2/pseudo_imfs.time.shape[0])*np.exp(np.log(prds_basin.values)/2)
+# confidence2 = - np.log(prds_basin.values) - 0.675*np.sqrt(2/pseudo_imfs.time.shape[0])*np.exp(np.log(prds_basin.values)/2)
+# plt.plot( np.log(prds_basin.values), confidence1, color='black', linestyle='--')
+# plt.plot( np.log(prds_basin.values), confidence2, color='black',linestyle='--')
+# plt.xlim([0, 7])
+# plt.ylim([-7, 0])
+# plt.loglog()
+plt.xticks(np.log(prds_basin.values), np.round(prds_basin.values))
+# plt.yticks(np.log(np.arange(1,5)), np.arange(1, 5))
+plt.xlabel('Period (days)')
+plt.ylabel('Energy  (mm/day)')
+plt.legend(energy_total_basin.season.values)
+plt.show()
+
 
 
 for i, encoded_dim in enumerate(energy_total.encoded_dims.values):
