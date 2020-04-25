@@ -12,7 +12,7 @@ if __name__ == '__main__':
                                  '-W', '48:00',
                                  '-R', 'rusage[mem=60000]',
                                  '-M', '120000',
-                                 '-n', '50',
+                                 '-n', '80',
                                  '-q', 'par-multi',
                                  python, script_path, str(lcs_time_len)]
                         )

@@ -6,8 +6,9 @@ from LagrangianCoherence.LCS.trajectory import parcel_propagation
 import sys
 from typing import Optional
 import concurrent.futures
-from xr_tools.tools import  get_xr_seq, latlonsel
-
+from xr_tools.tools import get_xr_seq, latlonsel, get_xr_seq_coords_only
+import dask
+import numpy as np
 config_jasmin = {
     'data_basepath': '/media/gabriel/gab_hd/data/sample_data/',
     'u_filename': 'viwve_ERA5_6hr_{year}010100-{year}123118.nc',
@@ -15,7 +16,7 @@ config_jasmin = {
     'tcwv_filename': 'tcwv_ERA5_6hr_{year}010100-{year}123118.nc',
     'time_freq': '6H',
     'chunks': {
-        'time': 1000, }
+        'time': 100, }
         ,
     'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-02-07T18:00:00'),
                    'latitude': slice(-80, 30),
@@ -174,15 +175,17 @@ class Classifier:
 
     def _lagrangian_method(self, u, v, lcs_type: str, lcs_time_len=4, find_departure=False) -> xr.DataArray:
         print(f"lcs_time_len {lcs_time_len}")
-        print( [x for x in range(lcs_time_len)])
+        timess = get_xr_seq_coords_only(u, 'time', idx_seq=np.arange(lcs_time_len))
         parallel = self.parallel
+
         SETTLS_order = 2
+
         time_dir = 'backward'
-        print('get_xr_seq')
-        u = get_xr_seq(u, 'time', [x for x in range(lcs_time_len)])
-        u = u.dropna(dim='time', how='any')
-        v = get_xr_seq(v, 'time', [x for x in range(lcs_time_len)])
-        v = v.dropna(dim='time', how='any')
+        # print('get_xr_seq')
+        # u = get_xr_seq(u, 'time', [x for x in range(lcs_time_len)])
+        # u = u.dropna(dim='time', how='any')
+        # v = get_xr_seq(v, 'time', [x for x in range(lcs_time_len)])
+        # v = v.dropna(dim='time', how='any')
 
         shearless = False
 
@@ -209,10 +212,10 @@ class Classifier:
 
         u.name = 'u'
         v.name = 'v'
-        lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='seq', shearless=shearless, SETTLS_order=SETTLS_order)
+        lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='time', shearless=shearless, SETTLS_order=SETTLS_order)
 
         ds = xr.merge([u, v])
-        ds = ds.chunk(dict(seq=None))
+        # ds = ds.chunk(dict(seq=None))
         # a = ds.groupby('time').apply(lcs)
         # def run_lcs(ds, lcs):
         #     return xr.apply_ufunc(lambda x, y: lcs(u=x, v=y), ds.u, ds.v, input_core_dims=[['seq'], ['seq']],
@@ -257,7 +260,9 @@ class Classifier:
                 output = xr.merge([x_list, y_list])
         else:
             array_list = []
-            for input_arrays in input_arrayss:
+            for n in np.arange(nbins):
+                ds.time.shape[0]
+                ds_list.append()
                 ds_groups = input_arrays.groupby('time')
                 ds_list = []
                 for label, group in ds_groups:
@@ -284,7 +289,6 @@ class Classifier:
         return output
 
 
-
 if __name__ == '__main__':
 
     classifier = Classifier()
@@ -295,11 +299,12 @@ if __name__ == '__main__':
     # start_year = str(sys.argv[3])
     # end_year = str(sys.argv[3])
     # lcs_time_len = int(sys.argv[4]) # * 6 hours intervals
-    running_on = 'jasmin'
+    running_on = 'local'
     lcs_type = 'attracting'
-    start_year = 2000
-    end_year = 2009
-    lcs_time_len = int(sys.argv[1])
+    start_year = 2020
+    end_year = 2020
+    # lcs_time_len = int(sys.argv[1])
+    lcs_time_len = 4
     config = config_jasmin
 
     config['array_slice_time']['time'] = slice(f'{start_year}-01-01T00:00:00', f'{end_year}-12-31T18:00:00')
@@ -311,6 +316,8 @@ if __name__ == '__main__':
         outpath = '/group_workspaces/jasmin4/upscale/gmpp/convzones/'
         # outpath = '/home/users/gmpp/'
     else:
+        config['data_basepath'] = '/home/gab/phd/data/ERA5/'
+
         outpath = '/home/gab/phd/data/FTLE_ERA5/'
 
     classified_array1 = classifier(config, method='lagrangian', lcs_type=lcs_type, lcs_time_len=lcs_time_len,

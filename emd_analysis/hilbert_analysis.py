@@ -487,13 +487,23 @@ prec_in_tiete = spc.sum('encoded_dims').where(MAG[basin]==1, drop=True).mean(['l
 f_tiete = xr.apply_ufunc(lambda x: np.abs(np.fft.fft(x, n=35)), prec_in_tiete.isel(time=slice(None,35)))
 freqs = np.fft.fftfreq(f_tiete.time.shape[0])
 f_tiete = f_tiete.assign_coords(time=np.log(freqs**-1)).rename({'time': 'logperiod'}).sortby('logperiod').isel(logperiod=slice(None,-1))
-(f_tiete).sel( logperiod=slice(None, None),).where(f_tiete.logperiod>0, drop=True).plot.line(hue='encoded_dims',x='logperiod')
-plt.xticks(np.log(np.arange(1, 35, 3)), np.arange(1,35, 3))
-plt.xlabel('Period (days)')
-plt.ylabel('Energy (mm)')
-plt.title('Fourier spectrum of the average daily precipitation over the Tiete basin')
+
+fig, ax = plt.subplots(1,1)
+(f_tiete).sel( logperiod=slice(None, None),).where(f_tiete.logperiod>0, drop=True).plot.line(ax=ax,hue='encoded_dims',x='logperiod')
+# plt.xticks(np.log(np.arange(1, 35, 3)), np.arange(1,35, 3))
+ax.set_xlabel('Log Period ')
+ax.set_ylabel('Energy (mm)')
+plt.title('Fourier 3spectrum of the average daily precipitation over the Tiete basin')
+# ax.tick_params(which='minor', length=0.01, color='r')
+
+secax = ax.secondary_xaxis('top', functions=(np.exp, np.log))
+secax.set_xlabel('Period (days)')
+secax.set_xticks(np.arange(1, 35, 2))
+plt.show()
 plt.savefig('figs/fourier_tiete.pdf')
 plt.close()
+
+
 
 import cartopy.feature as cfeature
 ocean_50m = cfeature.NaturalEarthFeature('physical', 'ocean', '50m',
@@ -530,7 +540,7 @@ prds_basin = period.where(MAG[basin] == 1, drop=True).mean(['lat', 'lon'])
 plt.style.use('ggplot')
 
 
-energy_total_basin = energy_total.where(MAG[basin] == 1, drop=True).mean(['lat', 'lon'])-energy_total.where(MAG[basin] == 1, drop=True).mean(['lat', 'lon', 'season'])
+energy_total_basin = energy_total.where(MAG[basin] == 1, drop=True).mean(['lat', 'lon'])#-energy_total.where(MAG[basin] == 1, drop=True).mean(['lat', 'lon', 'season'])
 
 for season in energy_total_basin.season.values:
     y = (energy_total_basin.sel(season=season).values)
@@ -550,6 +560,15 @@ plt.xticks(np.log(prds_basin.values), np.round(prds_basin.values))
 plt.xlabel('Period (days)')
 plt.ylabel('Energy  (mm/day)')
 plt.legend(energy_total_basin.season.values)
+plt.show()
+
+
+seasons=['DJF', 'MAM', 'JJA', 'SON']
+xs = np.array([0, 1, 2, 3])
+plt.bar(x=xs ,height=energy_total_basin.sel(encoded_dims=0, season=seasons).values,width=0.2)
+plt.bar(x=xs +0.2,height=energy_total_basin.sortby('season').sel(encoded_dims=2, season=seasons).values,width=0.2)
+plt.legend(prds_basin.values[[0, 2]])
+# plt.xticks([0,1,2,3],seasons)
 plt.show()
 
 
