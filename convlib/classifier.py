@@ -6,9 +6,13 @@ from LagrangianCoherence.LCS.trajectory import parcel_propagation
 import sys
 from typing import Optional
 import concurrent.futures
+import subprocess
 from xr_tools.tools import get_xr_seq, latlonsel, get_xr_seq_coords_only
 import dask
 import numpy as np
+import uuid
+import time
+import datetime
 config_jasmin = {
     'data_basepath': '/media/gabriel/gab_hd/data/sample_data/',
     'u_filename': 'viwve_ERA5_6hr_{year}010100-{year}123118.nc',
@@ -19,15 +23,15 @@ config_jasmin = {
         'time': 100, }
         ,
     'array_slice': {'time': slice('2000-02-06T00:00:00', '2000-02-07T18:00:00'),
-                   'latitude': slice(-80, 30),
-                   'longitude': slice(-180, 15),
+                   'latitude': slice(-40, -20),
+                   'longitude': slice(-50, -30),
                    # 'latitude': slice(-20, -35),
                    # 'longitude': slice(-55, -35)
                     },
 
     'array_slice_latlon': {
-        'latitude': slice(-80, 30),
-        'longitude': slice(-180, -1),
+        'latitude': slice(-70, 35),
+        'longitude': slice(-155, -15),
         # 'latitude': slice(-20, -35),
         # 'longitude': slice(-55, -35)
     },
@@ -179,13 +183,8 @@ class Classifier:
         parallel = self.parallel
 
         SETTLS_order = 2
-
+        parallel = True
         time_dir = 'backward'
-        # print('get_xr_seq')
-        # u = get_xr_seq(u, 'time', [x for x in range(lcs_time_len)])
-        # u = u.dropna(dim='time', how='any')
-        # v = get_xr_seq(v, 'time', [x for x in range(lcs_time_len)])
-        # v = v.dropna(dim='time', how='any')
 
         shearless = False
 
@@ -212,27 +211,27 @@ class Classifier:
 
         u.name = 'u'
         v.name = 'v'
-        lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='time', shearless=shearless, SETTLS_order=SETTLS_order)
+        subdomain = {
+            'latitude': slice(-40, 15),
+            'longitude': slice(-85, -35),
+        }
+        lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='time', shearless=shearless, SETTLS_order=SETTLS_order, subdomain=subdomain)
 
         ds = xr.merge([u, v])
-        # ds = ds.chunk(dict(seq=None))
-        # a = ds.groupby('time').apply(lcs)
-        # def run_lcs(ds, lcs):
-        #     return xr.apply_ufunc(lambda x, y: lcs(u=x, v=y), ds.u, ds.v, input_core_dims=[['seq'], ['seq']],
-        #                           dask='parallelized', output_dtypes=[float])
-        # a = run_lcs(ds, lcs).compute()
+
         ntimes = ds.time.shape[0]
         import os
-
 
         processes = os.cpu_count() - 1
         # processes = 5
         nbins = int(ntimes/processes)
-        print('grouping')
-        ds_groupss = list(ds.groupby_bins('time', bins=nbins))
-        input_arrayss = []
-        for label, group in ds_groupss: # have to do that because bloody groupby returns the labels
-            input_arrayss.append(group)
+        n = 1
+        binsize = processes
+        groups_of_times = []
+        while n <= nbins:
+            idxs = np.arange((n-1) * binsize, n * binsize)
+            groups_of_times.append(timess.isel(time=idxs))
+            n += 1
 
         if find_departure:
             x_list = []
@@ -259,32 +258,34 @@ class Classifier:
                 y_list.name = 'y_departure'
                 output = xr.merge([x_list, y_list])
         else:
-            array_list = []
-            for n in np.arange(nbins):
-                ds.time.shape[0]
-                ds_list.append()
-                ds_groups = input_arrays.groupby('time')
+            for k, times in enumerate(groups_of_times):
+                array_list = []
+                kk = str(k)
+                print(kk)
                 ds_list = []
-                for label, group in ds_groups:
-                    ds_list.append(group.load())
+                for time in times.time.values:
+                    ds_list.append(ds.sel(time=times.sel(time=time).values).load())
+
                 if parallel:
                     print('Starting parallel jobs')
                     with concurrent.futures.ProcessPoolExecutor(max_workers=processes) as executor:
                         for i, resulting_array in enumerate(executor.map(lcs, ds_list)):
-                            array_list.append(resulting_array.chunk(dict(seq=1)))
-                            sys.stderr.write('\rdone {0:%}'.format(i/len(input_arrays)))
+                            array_list.append(resulting_array.chunk(dict(time=1)))
+
                 else:
                     for i, input_array in enumerate(ds_list):
                        array_list.append(lcs(input_array, verbose=True))
-                       sys.stderr.write('\rdone {0:%}'.format(i / len(input_arrays)))
+
+                output = xr.concat(array_list, dim='time')
+                output.to_netcdf(f'{outpath_temp}SL_{lcs_type}_lcstimelen_{lcs_time_len}_partial_{kk}.nc')
 
 
-            output = xr.concat(array_list, dim='seq')
-
-            # idx = - lcs_time_len + 1 if lcs_time_len > 1 else None
-
-            output.seq.values = u.time.values
-            output = output.rename({'seq': 'time'})
+            # output = xr.concat(array_list, dim='seq')
+            #
+            # # idx = - lcs_time_len + 1 if lcs_time_len > 1 else None
+            #
+            # output.seq.values = u.time.values
+            # output = output.rename({'seq': 'time'})
 
         return output
 
@@ -299,34 +300,33 @@ if __name__ == '__main__':
     # start_year = str(sys.argv[3])
     # end_year = str(sys.argv[3])
     # lcs_time_len = int(sys.argv[4]) # * 6 hours intervals
-    running_on = 'local'
+    running_on = 'jasmin'
     lcs_type = 'attracting'
-    start_year = 2020
-    end_year = 2020
-    # lcs_time_len = int(sys.argv[1])
-    lcs_time_len = 4
+    start_year = 2000
+    end_year = 2009
+    lcs_time_len = int(sys.argv[1])
+    # lcs_time_len = 8
     config = config_jasmin
+    config['start_year'] = start_year
+    config['end_year'] = end_year
+    config['lcs_time_len'] = lcs_time_len
 
     config['array_slice_time']['time'] = slice(f'{start_year}-01-01T00:00:00', f'{end_year}-12-31T18:00:00')
+    config['start_time'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 
     #running_on =''
     #lcs_type = 'attracting'
     if running_on == 'jasmin':
         config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
-        outpath = '/group_workspaces/jasmin4/upscale/gmpp/convzones/'
-        # outpath = '/home/users/gmpp/'
+        outpath_temp = '/group_workspaces/jasmin4/upscale/gmpp/convzones/experiment_{}/'.format(uuid.uuid4())
     else:
         config['data_basepath'] = '/home/gab/phd/data/ERA5/'
+        outpath_temp = '/home/gab/phd/data/FTLE_ERA5/experiment_{}/'.format(uuid.uuid4())
 
-        outpath = '/home/gab/phd/data/FTLE_ERA5/'
+    subprocess.call(['mkdir', outpath_temp])
+    with open(outpath_temp + 'config.txt', 'w') as f:
+        f.write(str(config))
 
-    classified_array1 = classifier(config, method='lagrangian', lcs_type=lcs_type, lcs_time_len=lcs_time_len,
-                                   find_departure=find_departure, parallel=parallel)
-    print("*---- Saving file ----*")
-
-    for year in range(start_year, end_year + 1):
-
-        if find_departure:
-            classified_array1.sel(year=year).to_netcdf(f'{outpath}SL_{lcs_type}_{year}_departuretimelen_{lcs_time_len}_v2.nc')
-        else:
-            classified_array1.sel(year=year).to_netcdf(f'{outpath}SL_{lcs_type}_{year}_lcstimelen_{lcs_time_len}_v2.nc')
+    classifier(config, method='lagrangian', lcs_type=lcs_type, lcs_time_len=lcs_time_len,
+                               find_departure=find_departure, parallel=parallel)
