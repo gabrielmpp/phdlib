@@ -13,6 +13,8 @@ import numpy as np
 import uuid
 import time
 import datetime
+import os
+from dask.distributed import Client
 config_jasmin = {
     'data_basepath': '/media/gabriel/gab_hd/data/sample_data/',
     'u_filename': 'viwve_ERA5_6hr_{year}010100-{year}123118.nc',
@@ -31,7 +33,7 @@ config_jasmin = {
 
     'array_slice_latlon': {
         'latitude': slice(-70, 35),
-        'longitude': slice(-155, -15),
+        'longitude': slice(-155, 5),
         # 'latitude': slice(-20, -35),
         # 'longitude': slice(-55, -35)
     },
@@ -180,6 +182,8 @@ class Classifier:
     def _lagrangian_method(self, u, v, lcs_type: str, lcs_time_len=4, find_departure=False) -> xr.DataArray:
         print(f"lcs_time_len {lcs_time_len}")
         timess = get_xr_seq_coords_only(u, 'time', idx_seq=np.arange(lcs_time_len))
+        timess = timess.sel(time=str(end_year))
+
         parallel = self.parallel
 
         SETTLS_order = 2
@@ -213,25 +217,36 @@ class Classifier:
         v.name = 'v'
         subdomain = {
             'latitude': slice(-40, 15),
-            'longitude': slice(-85, -35),
+            'longitude': slice(-85, -32),
         }
-        lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='time', shearless=shearless, SETTLS_order=SETTLS_order, subdomain=subdomain)
+        lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='time', shearless=shearless, SETTLS_order=SETTLS_order,
+                  subdomain=subdomain)
 
         ds = xr.merge([u, v])
 
         ntimes = ds.time.shape[0]
         import os
 
-        processes = os.cpu_count() - 1
-        # processes = 5
-        nbins = int(ntimes/processes)
-        n = 1
-        binsize = processes
+        # processes = os.cpu_count() - 1
+        processes = 15
+        binsize = 15
+        nbins = int(ntimes/binsize)
         groups_of_times = []
+        n = 1
         while n <= nbins:
             idxs = np.arange((n-1) * binsize, n * binsize)
             groups_of_times.append(timess.isel(time=idxs))
             n += 1
+        try:
+            with open('/home/users/gmpp/log_simulations.txt', 'a') as f:
+                out = f"""
+                LCS time len: {lcs_time_len} 
+                N processes: {processes}
+                nbins: {nbins}    
+                """
+                f.write(out)
+        except FileNotFoundError:
+            pass
 
         if find_departure:
             x_list = []
@@ -264,13 +279,27 @@ class Classifier:
                 print(kk)
                 ds_list = []
                 for time in times.time.values:
+                    # ds_list.append(ds.sel(time=times.sel(time=time).values).load())
                     ds_list.append(ds.sel(time=times.sel(time=time).values).load())
 
                 if parallel:
                     print('Starting parallel jobs')
-                    with concurrent.futures.ProcessPoolExecutor(max_workers=processes) as executor:
-                        for i, resulting_array in enumerate(executor.map(lcs, ds_list)):
-                            array_list.append(resulting_array.chunk(dict(time=1)))
+                    client = Client(n_workers=processes)
+
+                    try:
+                        with open('/home/users/gmpp/log_simulations.txt', 'a') as f:
+                            f.write(
+                                f"""
+                                Doing bin: {kk}
+                                """
+                            )
+                    except FileNotFoundError:
+                        pass
+
+                    futures = client.map(lcs, ds_list)
+                    array_list = client.gather(futures)
+                    client.close()
+
 
                 else:
                     for i, input_array in enumerate(ds_list):
@@ -300,12 +329,12 @@ if __name__ == '__main__':
     # start_year = str(sys.argv[3])
     # end_year = str(sys.argv[3])
     # lcs_time_len = int(sys.argv[4]) # * 6 hours intervals
-    running_on = 'jasmin'
+    # running_on = 'jasmin'
     lcs_type = 'attracting'
-    start_year = 2000
-    end_year = 2009
+
     lcs_time_len = int(sys.argv[1])
-    # lcs_time_len = 8
+    end_year = int(sys.argv[2])
+    start_year = end_year - 1
     config = config_jasmin
     config['start_year'] = start_year
     config['end_year'] = end_year
@@ -317,14 +346,17 @@ if __name__ == '__main__':
 
     #running_on =''
     #lcs_type = 'attracting'
-    if running_on == 'jasmin':
-        config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
-        outpath_temp = '/group_workspaces/jasmin4/upscale/gmpp/convzones/experiment_{}/'.format(uuid.uuid4())
-    else:
-        config['data_basepath'] = '/home/gab/phd/data/ERA5/'
-        outpath_temp = '/home/gab/phd/data/FTLE_ERA5/experiment_{}/'.format(uuid.uuid4())
-
-    subprocess.call(['mkdir', outpath_temp])
+    # if running_on == 'jasmin':
+    #     config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
+    #     # outpath_temp = '/group_workspaces/jasmin4/upscale/gmpp/convzones/experiment_{}/'.format(uuid.uuid4())
+    #     outpath_temp = '/work/scratch-pw/gmpp/experiment_timelen_{timelen}_{id}/'.format(id=uuid.uuid4(),
+    #                                                                                  timelen=str(lcs_time_len), end_year=str(end_year))
+    #
+    # else:
+    #     config['data_basepath'] = '/home/gab/phd/data/ERA5/'
+    #     outpath_temp = '/home/gab/phd/data/FTLE_ERA5/experiment_{}/'.format(uuid.uuid4())
+    print(outpath_temp)
+    os.mkdir(outpath_temp)
     with open(outpath_temp + 'config.txt', 'w') as f:
         f.write(str(config))
 
