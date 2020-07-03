@@ -145,6 +145,7 @@ print('2')
 import sys
 
 basins = [str(sys.argv[1])]
+season = int(sys.argv[2])
 experiment = experiments[0]
 
 for experiment in experiments:
@@ -165,15 +166,12 @@ for experiment in experiments:
     # da = da * ridges.sel(time=da.time)
 
     for basin in basins:
-        season = 1
-        print('3')
         mask = MAG[basin].interp(latitude=da.latitude.values, longitude=da.longitude.values, method='nearest')
         da_season = da.where(da.season_mask == season, drop=True)
         da_ts = da_season.where(mask == 1).mean(['latitude', 'longitude'])
         threshold = 0.8
         da_ts = da_ts.where(da_ts > threshold, 0)
         da_ts = da_ts.where(da_ts < threshold, 1)
-        raise ValueError('!')
         da_avg_cz = da.where(da_ts == 1, drop=True).mean('time') - \
                     da.sel(time=da_ts.time).mean('time')
 
@@ -182,71 +180,72 @@ for experiment in experiments:
         t_test_cz = np.abs(t_test_cz)
         #
         #
-        # # ---- Plotting geopotential anomaly ---- #
-        z_ = z.sel(time=da.time)
-        z_['season_mask'] = ('time'), season_mask
-        z_ = z_.where(z_.season_mask == season, drop=True)
-        z_anomaly = z_.where(da_ts == 1, drop=True).mean('time') - z_.mean('time')
-        stdev = z_.var('time') ** 0.5
-        t_test = (da_ts.time.values.shape[0] ** 0.5) * z_anomaly / stdev
-        t_test = np.abs(t_test)
-        fig, ax = plt.subplots(1, 1, subplot_kw={'projection': ccrs.PlateCarree()})
-        t_99_percent_confidence = 2.5
-        z_anomaly.where(t_test > t_99_percent_confidence).plot.contourf(ax=ax, cmap='BrBG', levels=11,
-                                                                        transform=ccrs.PlateCarree(),
-                                                                        vmin=-500,
-                                                                        vmax=500)
-        mask.plot.contour(levels=[0.9, 1.1], colors='gray', ax=ax)
-
-        ax.coastlines()
-        plt.savefig(f'tempfigs/geopotential_anomaly_{basin}_season_{season}.pdf')
-        plt.close()
-
-        # ---- Plotting geopotential anomaly lagged 3 days ---- #
-
-        z_ = z.sel(time=da.time)
-
-        z_['season_mask'] = ('time'), season_mask
-        z_ = z_.where(z_.season_mask == season, drop=True)
-        z_anomaly = z_.shift(time=3).where(da_ts == 1, drop=True).mean('time') - z_.mean('time')
-        stdev = z.var('time') ** 0.5
-        t_test = (da_ts.time.values.shape[0] ** 0.5) * z_anomaly / stdev
-        t_test = np.abs(t_test)
-        fig, ax = plt.subplots(1, 1, subplot_kw={'projection': ccrs.PlateCarree()})
-        z_anomaly.where(t_test > t_99_percent_confidence).plot.contourf(ax=ax, cmap='BrBG', levels=11,
-                                                                        transform=ccrs.PlateCarree(),
-                                                                        vmin=-500,
-                                                                        vmax=500)
-        mask.plot.contour(levels=[0.9, 1.1], colors='gray', ax=ax)
-
-        ax.coastlines()
-        plt.savefig(f'tempfigs/geopotential_anomaly_{basin}_season_{season}_lag3.pdf')
-        plt.close()
+        # # # ---- Plotting geopotential anomaly ---- #
+        # z_ = z.sel(time=da.time)
+        # z_['season_mask'] = ('time'), season_mask
+        # z_ = z_.where(z_.season_mask == season, drop=True)
+        # z_anomaly = z_.where(da_ts == 1, drop=True).mean('time') - z_.mean('time')
+        # stdev = z_.var('time') ** 0.5
+        # t_test = (da_ts.time.values.shape[0] ** 0.5) * z_anomaly / stdev
+        # t_test = np.abs(t_test)
+        # fig, ax = plt.subplots(1, 1, subplot_kw={'projection': ccrs.PlateCarree()})
+        # t_99_percent_confidence = 2.5
+        # z_anomaly.where(t_test > t_99_percent_confidence).plot.contourf(ax=ax, cmap=cmr.redshift, levels=21,
+        #                                                                 transform=ccrs.PlateCarree(),
+        #                                                                 vmin=-500,
+        #                                                                 vmax=500)
+        # mask.plot.contour(levels=[0.9, 1.1], colors='gray', ax=ax)
+        #
+        # ax.coastlines()
+        # plt.savefig(f'tempfigs/geopotential_anomaly_{basin}_season_{season}.pdf')
+        # plt.close()
+        #
+        # # ---- Plotting geopotential anomaly lagged 3 days ---- #
+        #
+        # z_ = z.sel(time=da.time)
+        #
+        # z_['season_mask'] = ('time'), season_mask
+        # z_ = z_.where(z_.season_mask == season, drop=True)
+        # z_anomaly = z_.shift(time=3).where(da_ts == 1, drop=True).mean('time') - z_.mean('time')
+        # stdev = z.var('time') ** 0.5
+        # t_test = (da_ts.time.values.shape[0] ** 0.5) * z_anomaly / stdev
+        # t_test = np.abs(t_test)
+        # fig, ax = plt.subplots(1, 1, subplot_kw={'projection': ccrs.PlateCarree()})
+        # z_anomaly.where(t_test > t_99_percent_confidence).plot.contourf(ax=ax, cmap=cmr.redshift, levels=11,
+        #                                                                 transform=ccrs.PlateCarree(),
+        #                                                                 vmin=-500,
+        #                                                                 vmax=500)
+        # mask.plot.contour(levels=[0.9, 1.1], colors='gray', ax=ax)
+        #
+        # ax.coastlines()
+        # plt.savefig(f'tempfigs/geopotential_anomaly_{basin}_season_{season}_lag3.pdf')
+        # plt.close()
         #
         # # ---- Plotting rainfall and flux means ---- #
-
+        t_99_percent_confidence = 2.5
         cpc_ = cpc.sel(time=da.time)
         cpc_['season_mask'] = ('time'), season_mask
         cpc_ = cpc_.where(cpc_.season_mask == season, drop=True).mean('time')
 
         u_ = u.sel(time=da_ts.time)
         v_ = v.sel(time=da_ts.time)
-        u_ = u_.load()
-        v_ = v_.load()
+        # u_ = u_.load()
+        # v_ = v_.load()
 
         u_ = u_.mean('time')
 
         v_ = v_.mean('time')
-        import seaborn as sns
 
         influx_ = influx.sel(time=da_ts.time)
         influx_ = influx_.mean('time')
-        influx_ = influx_.load()
-
-        fig, axs = plt.subplots(1, 1, subplot_kw={'projection': ccrs.PlateCarree()}, figsize=[10, 10])
-        cpc_.plot.contourf(levels=16, ax=axs, cmap=sns.cubehelix_palette(dark=0, light=1, as_cmap=True),
+        # influx_ = influx_.load()
+        cpc_.name = 'Rainfall anomaly (mm/day)'
+        fig, axs = plt.subplots(1, 1, subplot_kw={'projection': ccrs.PlateCarree()})
+        cpc_.plot.contourf(levels=16, ax=axs, cmap=cmr.freeze_r,ylim=[da.latitude.min().values,
+                                                          da.latitude.max().values],
+                                 xlim=[da.longitude.min().values, da.longitude.max().values],
                            vmin=0, vmax=15, add_colorbar=True)
-        influx_.plot(ax=axs, cmap='seismic', vmin=-100, vmax=100, add_colorbar=True)
+        influx_.plot(ax=axs, cmap='seismic', vmin=-100, vmax=100, add_colorbar=True, levels=21)
 
         axs.coastlines()
         magnitude = (np.abs(u_.values) + np.abs(v_.values))
@@ -254,7 +253,7 @@ for experiment in experiments:
                        u=u_.values, v=v_.values, linewidth=2 * magnitude / np.max(magnitude), color='k')
         axs.set_xlim([da.longitude.min(), da.longitude.max()])
         axs.set_ylim([da.latitude.min(), da.latitude.max()])
-        axs.set_title('Precipitation and moisture flux')
+        # axs.set_title('Precipitation and moisture flux')
 
         plt.savefig('tempfigs/FTLE_{days}_days_basin_{basin}_season_{season}.pdf'.format(
             days=str(int(days)), basin=basin, season=season))
@@ -295,17 +294,20 @@ for experiment in experiments:
         da_avg_cz.name = 'FTLE anomaly (1/day)'
         cmap = cmr.iceburn_r
         cpc_toplot.plot.contourf(levels=21, ax=axs[0], cmap=cmap, vmin=-5, vmax=5,
-                                 add_colorbar=True,
+                                 add_colorbar=True, ylim=[da.latitude.min().values,
+                                                          da.latitude.max().values],
+                                 xlim=[da.longitude.min().values, da.longitude.max().values],
                                  cbar_kwargs={'shrink': 0.6})
 
         p = influx_toplot.plot(ax=axs[0], cmap='seismic',
-                               vmin=-100, vmax=100,
+                               vmin=-40, vmax=40, levels=21,
                                add_colorbar=False)
 
         plt.colorbar(p, ax=axs[0], orientation='horizontal', shrink=0.9)
         mask.plot.contour(levels=[0.9, 1.1], colors='gray', ax=axs[0], linewidths=0.9)
         mask.plot.contour(levels=[0.9, 1.1], colors='gray', ax=axs[1], linewidths=0.9)
-        da_toplot.plot.contourf(
+        da_toplot.plot.contourf(ylim=[da.latitude.min().values, da.latitude.max().values],
+                                 xlim=[da.longitude.min().values, da.longitude.max().values],
             cmap=cmr.redshift, levels=21, ax=axs[1], add_colorbar=True, cbar_kwargs={'shrink': 0.6})
         plt.colorbar(p, ax=axs[1], orientation='horizontal', shrink=0.9)
         axs[0].coastlines()

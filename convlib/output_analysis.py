@@ -522,7 +522,9 @@ with open(outpath + experiment + 'config.txt') as file: config = eval(file.read(
 days = config['lcs_time_len'] / 4
 files = [f for f in glob.glob(outpath + experiment + "**/*.nc", recursive=True)]
 da = xr.open_dataarray(outpath + experiment + '/full_array.nc', chunks={'time': 100})
+da = np.log(np.sqrt(da)) / days
 da = da.resample(time='1D').mean()
+
 cpc_ = cpc.sel(time=da.time).interp(latitude=da.latitude.values, longitude=da.longitude.values)
 
 cpc_anomaly = xr.apply_ufunc(lambda x, y: x - y, cpc_.groupby('time.month'), cpc_.groupby('time.month').mean('time'))
@@ -544,15 +546,32 @@ n_events = len(idx)
 t_corr = np.abs(correl*np.sqrt((n_events - 2)/(1-correl**2)))
 fig, ax = plt.subplots(1, 1, subplot_kw={'projection': ccrs.PlateCarree()})
 
-correl.plot.contourf(levels=11, cmap=cmr.fusion,ax=ax)
+correl.plot.contourf(levels=21, cmap=cmr.fusion,ax=ax)
 t_corr.plot.contourf(levels=[0, 2.57], ax=ax, hatches=['xxx', ' ', ' '], alpha=0, add_colorbar=False)
 south_border.where(south_border==1).plot(cmap='black', levels=[0.9, 1.1], ax=ax, add_colorbar=False)
 ax.coastlines()
-ax.set_ylim([t_corr.latitude.min().values, t_corr.latitude.max().values])
-ax.set_xlim([t_corr.longitude.min().values, t_corr.longitude.max().values])
+ax.set_ylim([correl.latitude.min().values, correl.latitude.max().values])
+ax.set_xlim([correl.longitude.min().values, correl.longitude.max().values])
 plt.savefig('tempfigs/FTLE_correlation_flux.pdf')
 plt.close()
 
+ridges = xr.open_dataarray(outpath + experiment + 'ridges.nc')
+ridges = ridges.where(da > 0.8, 0)
+n_events = ridges.sum('time')
+n_events = n_events.load()
+
+
+ridges_flux = influx_anomaly * ridges
+mean_ridges_flux = ridges_flux.mean('time')
+mean_ridges_flux = mean_ridges_flux.load()
+mean_ridges_flux.plot()
+stdev = influx_anomaly.var('time') ** 0.5
+t_test = n_events * mean_ridges_flux / stdev
+t_test = np.abs(t_test)
+t_test = t_test.load()
+
+mean_ridges_flux.where(t_test > 5, np.nan).plot.contourf(levels=21, cmap=cmr.fusion)
+t_test.plot.contourf(levels=[0, 2.57], ax=ax, hatches=['xxx', ' ', ' '], alpha=0, add_colorbar=False)
 
 
 # correl = spearman_correlation(influx_anomaly.shift(time=0), cpc_anomaly, dim='time')
