@@ -5,6 +5,8 @@ from LagrangianCoherence.LCS.LCS import LCS
 from LagrangianCoherence.LCS.trajectory import parcel_propagation
 import sys
 from typing import Optional
+from dask_jobqueue import SLURMCluster
+from dask.distributed import Client
 import concurrent.futures
 import subprocess
 from xr_tools.tools import get_xr_seq, latlonsel, get_xr_seq_coords_only
@@ -225,17 +227,20 @@ class Classifier:
         ds = xr.merge([u, v])
 
         ntimes = ds.time.shape[0]
-        import os
 
-        # processes = os.cpu_count() - 1
         processes = 15
-        binsize = 15
+        binsize = 31
         nbins = int(ntimes/binsize)
         groups_of_times = []
         n = 1
-        while n <= nbins:
+        print(timess)
+        while n < (nbins-2):
+
             idxs = np.arange((n-1) * binsize, n * binsize)
-            groups_of_times.append(timess.isel(time=idxs))
+            try:
+                groups_of_times.append(timess.isel(time=idxs))
+            except:
+                break
             n += 1
         try:
             with open('/home/users/gmpp/log_simulations.txt', 'a') as f:
@@ -284,7 +289,10 @@ class Classifier:
 
                 if parallel:
                     print('Starting parallel jobs')
-                    client = Client(n_workers=processes)
+                    cluster = SLURMCluster(queue='par-single', cores=8, memory='2GB')
+                    cluster.scale(jobs=20)
+                    client = Client(cluster)
+
 
                     try:
                         with open('/home/users/gmpp/log_simulations.txt', 'a') as f:
@@ -344,17 +352,17 @@ if __name__ == '__main__':
     config['start_time'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-    #running_on =''
-    #lcs_type = 'attracting'
-    # if running_on == 'jasmin':
-    #     config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
-    #     # outpath_temp = '/group_workspaces/jasmin4/upscale/gmpp/convzones/experiment_{}/'.format(uuid.uuid4())
-    #     outpath_temp = '/work/scratch-pw/gmpp/experiment_timelen_{timelen}_{id}/'.format(id=uuid.uuid4(),
-    #                                                                                  timelen=str(lcs_time_len), end_year=str(end_year))
-    #
-    # else:
-    #     config['data_basepath'] = '/home/gab/phd/data/ERA5/'
-    #     outpath_temp = '/home/gab/phd/data/FTLE_ERA5/experiment_{}/'.format(uuid.uuid4())
+    running_on = 'jasmin'
+    lcs_type = 'attracting'
+    if running_on == 'jasmin':
+        config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
+        # outpath_temp = '/group_workspaces/jasmin4/upscale/gmpp/convzones/experiment_{}/'.format(uuid.uuid4())
+        outpath_temp = '/work/scratch-pw/gmpp/experiment_timelen_{timelen}_{id}/'.format(id=uuid.uuid4(),
+                                                                                     timelen=str(lcs_time_len), end_year=str(end_year))
+
+    else:
+        config['data_basepath'] = '/home/gab/phd/data/ERA5/'
+        outpath_temp = '/home/gab/phd/data/FTLE_ERA5/experiment_{}/'.format(uuid.uuid4())
     print(outpath_temp)
     os.mkdir(outpath_temp)
     with open(outpath_temp + 'config.txt', 'w') as f:
