@@ -11,7 +11,8 @@ import uuid
 import datetime
 import os
 from dask.distributed import Client
-
+from dask.distributed import fire_and_forget
+from dask.diagnostics import ProgressBar
 config_jasmin = {
     'data_basepath': '/media/gabriel/gab_hd/data/sample_data/',
     'u_filename': 'viwve_ERA5_6hr_{year}010100-{year}123118.nc',
@@ -59,18 +60,15 @@ config_local = {
     }
     }
 
+
 class Classifier:
     """
     Convergence zones classifier
     """
 
-    def __init__(self):
-
-        pass
-
-    def __call__(self, config: dict, method: str, lcs_type: Optional[str] = None, lcs_time_len: Optional[int] = 4,
+    def __init__(self, config: dict, method: str, lcs_type: Optional[str] = None, lcs_time_len: Optional[int] = 4,
                  find_departure: bool = False, parallel: bool = False, init_time: Optional[int] = None,
-                 final_time: Optional[int] = None) -> xr.DataArray:
+                 final_time: Optional[int] = None):
         """
 
         :param config: Dictionary with
@@ -81,15 +79,20 @@ class Classifier:
         :param parallel:
         :param init_time: Only necessary for limited time tests - Set to None for complete runs
         :param final_time: same as init_time
-        :param subtimes_len:
         :return:
         """
-        print(f"*---- Calling classifier with method {method} ----*")
         self.init_time = init_time
         self.final_time = final_time
         self.method = method
         self.config = config
         self.parallel = parallel
+        self.lcs_time_len = lcs_time_len
+        self.lcs_type = lcs_type
+        self.find_departure = find_departure
+
+    def __call__(self) -> xr.DataArray:
+
+        print(f"*---- Calling classifier with method {method} ----*")
 
         u, v = self._read_data
         # u = to_cartesian(u)
@@ -160,13 +163,38 @@ class Classifier:
         # v = v.interp(latitude=new_lat, longitude=new_lon)
         # print('*---- Finish interp ----*')
         print("*---- Done reading ----*")
+        print(u)
         return u, v
+
+    def preprocess_and_save(self, lcs_time_len) -> None:
+
+        u, v = self._read_data
+        timess = get_xr_seq_coords_only(u, 'time', idx_seq=np.arange(lcs_time_len))
+        print(timess)
+        parallel = True
+        u.name = 'u'
+        v.name = 'v'
+
+        ds = xr.merge([u, v])
+
+        ds = ds.load()
+        print('Loaded ds')
+
+        def load_and_save(input):
+            input.to_netcdf(f'{outpath_temp}SL_{lcs_type}_lcstimelen_{lcs_time_len}_partial_{time}.nc')
+
+        for time in timess.time.values:
+            print('Writing time {}'.format(time))
+            times = timess.sel(time=time).values
+            input = ds.sel(time=times)
+            load_and_save(input)
+            # a = client.futures(load_and_save, input)
+            # fire_and_forget(a)
 
     def call_lcs(self, u, v, lcs_type: str, lcs_time_len=4, find_departure=False) -> xr.DataArray:
 
         print(f"lcs_time_len {lcs_time_len}")
         timess = get_xr_seq_coords_only(u, 'time', idx_seq=np.arange(lcs_time_len))
-        timess = timess.sel(time=str(end_year))
 
         SETTLS_order = 2
         parallel = True
@@ -257,34 +285,39 @@ class Classifier:
                 print(kk)
                 ds_list = []
                 for time in times.time.values:
+                    print('Writing time {}'.format(time))
                     # ds_list.append(ds.sel(time=times.sel(time=time).values).load())
-                    ds_list.append(ds.sel(time=times.sel(time=time).values).load())
+                    input = ds.sel(time=times.sel(time=time).values).load()
+                    input.to_netcdf(f'{outpath_temp}SL_{lcs_type}_lcstimelen_{lcs_time_len}_partial_{time}.nc')
+                    # ds_list.append(ds.sel(time=times.sel(time=time).values).load())
 
-                if parallel:
-                    print('Starting parallel jobs')
-                    client = Client(n_workers=processes)
-
-                    try:
-                        with open('/home/users/gmpp/log_simulations.txt', 'a') as f:
-                            f.write(
-                                f"""
-                                Doing bin: {kk}
-                                """
-                            )
-                    except FileNotFoundError:
-                        pass
-
-                    futures = client.map(lcs, ds_list)
-                    array_list = client.gather(futures)
-                    client.close()
-
-
-                else:
-                    for i, input_array in enumerate(ds_list):
-                       array_list.append(lcs(input_array, verbose=True))
-
-                output = xr.concat(array_list, dim='time')
-                output.to_netcdf(f'{outpath_temp}SL_{lcs_type}_lcstimelen_{lcs_time_len}_partial_{kk}.nc')
+                #
+                #
+                # if parallel:
+                #     print('Starting parallel jobs')
+                #     client = Client(n_workers=processes)
+                #
+                #     try:
+                #         with open('/home/users/gmpp/log_simulations.txt', 'a') as f:
+                #             f.write(
+                #                 f"""
+                #                 Doing bin: {kk}
+                #                 """
+                #             )
+                #     except FileNotFoundError:
+                #         pass
+                #
+                #     futures = client.map(lcs, ds_list)
+                #     array_list = client.gather(futures)
+                #     client.close()
+                #
+                #
+                # else:
+                #     for i, input_array in enumerate(ds_list):
+                #        array_list.append(lcs(input_array, verbose=True))
+                #
+                # output = xr.concat(array_list, dim='time')
+                # output.to_netcdf(f'{outpath_temp}SL_{lcs_type}_lcstimelen_{lcs_time_len}_partial_{kk}.nc')
 
 
             # output = xr.concat(array_list, dim='seq')
@@ -299,7 +332,6 @@ class Classifier:
 
 if __name__ == '__main__':
 
-    classifier = Classifier()
     parallel = True
     find_departure = False
     # running_on = str(sys.argv[1])
@@ -310,9 +342,9 @@ if __name__ == '__main__':
     # running_on = 'jasmin'
     lcs_type = 'attracting'
 
-    lcs_time_len = int(sys.argv[1])
-    end_year = int(sys.argv[2])
-    start_year = end_year - 1
+    lcs_time_len = 8
+    end_year = 2005
+    start_year = 2000
     config = config_jasmin
     config['start_year'] = start_year
     config['end_year'] = end_year
@@ -338,5 +370,7 @@ if __name__ == '__main__':
     with open(outpath_temp + 'config.txt', 'w') as f:
         f.write(str(config))
 
-    classifier(config, method='lagrangian', lcs_type=lcs_type, lcs_time_len=lcs_time_len,
-                               find_departure=find_departure, parallel=parallel)
+    classifier = Classifier(config, method='lagrangian', lcs_type=lcs_type, lcs_time_len=lcs_time_len,
+               find_departure=find_departure, parallel=parallel)
+
+    classifier.preprocess_and_save(lcs_time_len)
