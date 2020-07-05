@@ -5,18 +5,13 @@ from LagrangianCoherence.LCS.LCS import LCS
 from LagrangianCoherence.LCS.trajectory import parcel_propagation
 import sys
 from typing import Optional
-from dask_jobqueue import SLURMCluster
-from dask.distributed import Client
-import concurrent.futures
-import subprocess
-from xr_tools.tools import get_xr_seq, latlonsel, get_xr_seq_coords_only
-import dask
+from xr_tools.tools import latlonsel, get_xr_seq_coords_only
 import numpy as np
 import uuid
-import time
 import datetime
 import os
 from dask.distributed import Client
+
 config_jasmin = {
     'data_basepath': '/media/gabriel/gab_hd/data/sample_data/',
     'u_filename': 'viwve_ERA5_6hr_{year}010100-{year}123118.nc',
@@ -107,7 +102,7 @@ class Classifier:
             classified_array = self._conv_method(u, v)
         elif self.method == 'lagrangian':
             assert isinstance(lcs_type, str), 'lcs_type must be string'
-            classified_array = self._lagrangian_method(u, v, lcs_type, lcs_time_len, find_departure=find_departure)
+            classified_array = self.call_lcs(u, v, lcs_type, lcs_time_len, find_departure=find_departure)
         else:
             method = self.method
             raise ValueError(f'Method {method} not supported')
@@ -145,6 +140,7 @@ class Classifier:
         tcwv = latlonsel(tcwv, **self.config['array_slice_latlon'])
         assert pd.infer_freq(u.time.values) == pd.infer_freq(v.time.values), "u and v should have equal time frequencies"
         data_time_freq = pd.infer_freq(u.time.values)
+
         if data_time_freq != self.config['time_freq']:
             print("Resampling data to {}".format(self.config['time_freq']))
             u = u.resample(time=self.config['time_freq']).interpolate('linear')
@@ -157,36 +153,20 @@ class Classifier:
             v = v / tcwv
             print("Done unit conversion")
 
-
         # new_lon = np.linspace(u.longitude[0].values, u.longitude[-1].values, int(u.longitude.values.shape[0] * 0.5))
         # new_lat = np.linspace(u.latitude[0].values, u.latitude[-1].values, int(u.longitude.values.shape[0] * 0.5))
-        print("*---- NOT Start interp ----*")
+        # print("*---- NOT Start interp ----*")
         # u = u.interp(latitude=new_lat, longitude=new_lon)
         # v = v.interp(latitude=new_lat, longitude=new_lon)
-        print('*---- Finish interp ----*')
-
-
+        # print('*---- Finish interp ----*')
         print("*---- Done reading ----*")
         return u, v
 
-    @staticmethod
-    def _Q_method(u, v):
-        classified_array = 2*u.differentiate('x')*v.differentiate('y') - 2*v.differentiate("x") * u.differentiate("y")
-        #classified_array = classified_array.where(Q < 0, 0)
-        return classified_array
+    def call_lcs(self, u, v, lcs_type: str, lcs_time_len=4, find_departure=False) -> xr.DataArray:
 
-    @staticmethod
-    def _conv_method(u ,v):
-        div = divergence(u, v)
-       # classified_array = div.where(div<-0.5e-3)
-        return div
-
-    def _lagrangian_method(self, u, v, lcs_type: str, lcs_time_len=4, find_departure=False) -> xr.DataArray:
         print(f"lcs_time_len {lcs_time_len}")
         timess = get_xr_seq_coords_only(u, 'time', idx_seq=np.arange(lcs_time_len))
         timess = timess.sel(time=str(end_year))
-
-        parallel = self.parallel
 
         SETTLS_order = 2
         parallel = True
@@ -203,24 +183,15 @@ class Classifier:
             raise ValueError(f"Frequency {timestep} not supported.")
 
         timestep = -timestep if time_dir == 'backward' else timestep
-        # self.config['chunks']['seq'] = lcs_time_len
-
-        # u = u.chunk(self.config['chunks'])
-        # v = v.chunk(self.config['chunks'])
-        # # newchunks = dict(
-        # #     time=None,
-        # #     latitude=4,
-        # #     longitude=4
-        # # )
-        # u = u.chunk(newchunks)
-        # v = v.chunk(newchunks)
 
         u.name = 'u'
         v.name = 'v'
+
         subdomain = {
             'latitude': slice(-40, 15),
             'longitude': slice(-85, -32),
         }
+
         lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='time', shearless=shearless, SETTLS_order=SETTLS_order,
                   subdomain=subdomain)
 
@@ -229,17 +200,19 @@ class Classifier:
         ntimes = ds.time.shape[0]
 
         processes = 15
-        binsize = 31
+        binsize = 40
         nbins = int(ntimes/binsize)
         groups_of_times = []
         n = 1
         print(timess)
+
         while n < (nbins-2):
 
             idxs = np.arange((n-1) * binsize, n * binsize)
             try:
                 groups_of_times.append(timess.isel(time=idxs))
             except:
+
                 break
             n += 1
         try:
@@ -289,10 +262,7 @@ class Classifier:
 
                 if parallel:
                     print('Starting parallel jobs')
-                    cluster = SLURMCluster(queue='par-single', cores=8, memory='2GB')
-                    cluster.scale(jobs=20)
-                    client = Client(cluster)
-
+                    client = Client(n_workers=processes)
 
                     try:
                         with open('/home/users/gmpp/log_simulations.txt', 'a') as f:
