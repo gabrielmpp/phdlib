@@ -92,7 +92,7 @@ class Classifier:
 
     def __call__(self) -> xr.DataArray:
 
-        print(f"*---- Calling classifier with method {method} ----*")
+        print(f"*---- Calling classifier with method {self.method} ----*")
 
         u, v = self._read_data
         # u = to_cartesian(u)
@@ -177,19 +177,12 @@ class Classifier:
 
         ds = xr.merge([u, v])
 
-        ds = ds.load()
-        print('Loaded ds')
-
-        def load_and_save(input):
-            input.to_netcdf(f'{outpath_temp}SL_{lcs_type}_lcstimelen_{lcs_time_len}_partial_{time}.nc')
 
         for time in timess.time.values:
             print('Writing time {}'.format(time))
             times = timess.sel(time=time).values
             input = ds.sel(time=times)
-            load_and_save(input)
-            # a = client.futures(load_and_save, input)
-            # fire_and_forget(a)
+            input.to_netcdf(f'{outpath_temp}SL_{lcs_type}_lcstimelen_{lcs_time_len}_partial_{time}.nc')
 
     def call_lcs(self, u, v, lcs_type: str, lcs_time_len=4, find_departure=False) -> xr.DataArray:
 
