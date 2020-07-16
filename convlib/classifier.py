@@ -1,5 +1,4 @@
 import xarray as xr
-from meteomath import  divergence
 import pandas as pd
 from LagrangianCoherence.LCS.LCS import LCS
 from LagrangianCoherence.LCS.trajectory import parcel_propagation
@@ -10,9 +9,8 @@ import numpy as np
 import uuid
 import datetime
 import os
-from dask.distributed import Client
-from dask.distributed import fire_and_forget
-from dask.diagnostics import ProgressBar
+import subprocess
+
 config_jasmin = {
     'data_basepath': '/media/gabriel/gab_hd/data/sample_data/',
     'u_filename': 'viwve_ERA5_6hr_{year}010100-{year}123118.nc',
@@ -170,157 +168,28 @@ class Classifier:
 
         u, v = self._read_data
         timess = get_xr_seq_coords_only(u, 'time', idx_seq=np.arange(lcs_time_len))
-        print(timess)
-        parallel = True
         u.name = 'u'
         v.name = 'v'
 
         ds = xr.merge([u, v])
 
+        python = '/home/users/gmpp/miniconda2/envs/phd37/bin/python'
+        script_path = '/home/users/gmpp/phdscripts/phdlib/convlib/slurm_submission.sh'
 
+        timestep = -6 * 3600
         for time in timess.time.values:
             print('Writing time {}'.format(time))
             times = timess.sel(time=time).values
             input = ds.sel(time=times)
-            input.to_netcdf(f'{outpath_temp}SL_{lcs_type}_lcstimelen_{lcs_time_len}_partial_{time}.nc')
+            savepath = f'{outpath_temp}input_partial_{time}.nc'
+            ftlepath = f'{outpath_temp}SL_{lcs_type}_lcstimelen_{lcs_time_len}_partial_{time}.nc'
+            input.to_netcdf(savepath)
 
-    def call_lcs(self, u, v, lcs_type: str, lcs_time_len=4, find_departure=False) -> xr.DataArray:
-
-        print(f"lcs_time_len {lcs_time_len}")
-        timess = get_xr_seq_coords_only(u, 'time', idx_seq=np.arange(lcs_time_len))
-
-        SETTLS_order = 2
-        parallel = True
-        time_dir = 'backward'
-
-        shearless = False
-
-        timestep = self.config['time_freq']
-        if 'H' in timestep:
-            timestep = float(timestep.replace('H', '')) * 3600
-        elif 'D' in timestep:
-            timestep = float(timestep.replace('D', '')) * 86400
-        else:
-            raise ValueError(f"Frequency {timestep} not supported.")
-
-        timestep = -timestep if time_dir == 'backward' else timestep
-
-        u.name = 'u'
-        v.name = 'v'
-
-        subdomain = {
-            'latitude': slice(-40, 15),
-            'longitude': slice(-85, -32),
-        }
-
-        lcs = LCS(lcs_type=lcs_type, timestep=timestep, timedim='time', shearless=shearless, SETTLS_order=SETTLS_order,
-                  subdomain=subdomain)
-
-        ds = xr.merge([u, v])
-
-        ntimes = ds.time.shape[0]
-
-        processes = 15
-        binsize = 40
-        nbins = int(ntimes/binsize)
-        groups_of_times = []
-        n = 1
-        print(timess)
-
-        while n < (nbins-2):
-
-            idxs = np.arange((n-1) * binsize, n * binsize)
-            try:
-                groups_of_times.append(timess.isel(time=idxs))
-            except:
-
-                break
-            n += 1
-        try:
-            with open('/home/users/gmpp/log_simulations.txt', 'a') as f:
-                out = f"""
-                LCS time len: {lcs_time_len} 
-                N processes: {processes}
-                nbins: {nbins}    
-                """
-                f.write(out)
-        except FileNotFoundError:
-            pass
-
-        if find_departure:
-            x_list = []
-            y_list = []
-            if parallel:
-                raise Exception("Parallel not implemented")
-                pass
-            #    with concurrent.futures.ProcessPoolExecutor(max_workers=10) as executor:
-            #       for i, resulting_array in enumerate(executor.map(lcs, input_arrays)):
-            #           u_list.append(resulting_array[0])
-            #           v_list.append(resulting_array[1])
-            #          sys.stderr.write('\rdone {0:%}'.format(i/len(input_arrays)))
-            else:
-                for i, input_array in enumerate(input_arrays):
-                    x_departure, y_departure = parcel_propagation(input_array.u.copy(), input_array.v.copy(), timestep,
-                                                                  propdim='seq',
-                                                                  SETTLS_order=SETTLS_order)
-                    x_list.append(x_departure)
-                    y_list.append(y_departure)
-                    sys.stderr.write('\rdone {0:%}'.format(i / len(input_arrays)))
-                x_list = xr.concat(x_list, dim='time')
-                y_list = xr.concat(y_list, dim='time')
-                x_list.name = 'x_departure'
-                y_list.name = 'y_departure'
-                output = xr.merge([x_list, y_list])
-        else:
-            for k, times in enumerate(groups_of_times):
-                array_list = []
-                kk = str(k)
-                print(kk)
-                ds_list = []
-                for time in times.time.values:
-                    print('Writing time {}'.format(time))
-                    # ds_list.append(ds.sel(time=times.sel(time=time).values).load())
-                    input = ds.sel(time=times.sel(time=time).values).load()
-                    input.to_netcdf(f'{outpath_temp}SL_{lcs_type}_lcstimelen_{lcs_time_len}_partial_{time}.nc')
-                    # ds_list.append(ds.sel(time=times.sel(time=time).values).load())
-
-                #
-                #
-                # if parallel:
-                #     print('Starting parallel jobs')
-                #     client = Client(n_workers=processes)
-                #
-                #     try:
-                #         with open('/home/users/gmpp/log_simulations.txt', 'a') as f:
-                #             f.write(
-                #                 f"""
-                #                 Doing bin: {kk}
-                #                 """
-                #             )
-                #     except FileNotFoundError:
-                #         pass
-                #
-                #     futures = client.map(lcs, ds_list)
-                #     array_list = client.gather(futures)
-                #     client.close()
-                #
-                #
-                # else:
-                #     for i, input_array in enumerate(ds_list):
-                #        array_list.append(lcs(input_array, verbose=True))
-                #
-                # output = xr.concat(array_list, dim='time')
-                # output.to_netcdf(f'{outpath_temp}SL_{lcs_type}_lcstimelen_{lcs_time_len}_partial_{kk}.nc')
-
-
-            # output = xr.concat(array_list, dim='seq')
-            #
-            # # idx = - lcs_time_len + 1 if lcs_time_len > 1 else None
-            #
-            # output.seq.values = u.time.values
-            # output = output.rename({'seq': 'time'})
-
-        return output
+            # Args: timestep, timedim, SETTLS_order, subdomain, ds_path, outpath
+            subprocess.call(['sbatch',
+                              script_path, str(timestep), 'time', str(2),
+                             '-85/-32/-40/15', savepath, ftlepath]
+                            )
 
 
 if __name__ == '__main__':
@@ -336,8 +205,8 @@ if __name__ == '__main__':
     lcs_type = 'attracting'
 
     lcs_time_len = 8
-    end_year = 2005
-    start_year = 2000
+    end_year = 2009
+    start_year = 1981
     config = config_jasmin
     config['start_year'] = start_year
     config['end_year'] = end_year
