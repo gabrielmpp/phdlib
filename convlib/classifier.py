@@ -2,7 +2,7 @@ import xarray as xr
 import pandas as pd
 from LagrangianCoherence.LCS.LCS import LCS
 from LagrangianCoherence.LCS.trajectory import parcel_propagation
-import sys
+import glob
 from typing import Optional
 from xr_tools.tools import latlonsel, get_xr_seq_coords_only
 import numpy as np
@@ -64,7 +64,7 @@ class Classifier:
     Convergence zones classifier
     """
 
-    def __init__(self, config: dict, method: str, lcs_type: Optional[str] = None, lcs_time_len: Optional[int] = 4,
+    def __init__(self, config: dict, method: str, lcs_time_len: Optional[int] = 4,
                  find_departure: bool = False, parallel: bool = False, init_time: Optional[int] = None,
                  final_time: Optional[int] = None):
         """
@@ -85,7 +85,6 @@ class Classifier:
         self.config = config
         self.parallel = parallel
         self.lcs_time_len = lcs_time_len
-        self.lcs_type = lcs_type
         self.find_departure = find_departure
 
     def __call__(self) -> xr.DataArray:
@@ -167,13 +166,13 @@ class Classifier:
     def preprocess_and_save(self, lcs_time_len) -> None:
 
         u, v = self._read_data
-        timess = get_xr_seq_coords_only(u, 'time', idx_seq=np.arange(lcs_time_len))
         u.name = 'u'
         v.name = 'v'
 
         ds = xr.merge([u, v])
+        ds = ds.sel(config['array_slice_time'])
+        timess = get_xr_seq_coords_only(ds, 'time', idx_seq=np.arange(lcs_time_len))
 
-        python = '/home/users/gmpp/miniconda2/envs/phd37/bin/python'
         script_path = '/home/users/gmpp/phdscripts/phdlib/convlib/slurm_submission.sh'
 
         timestep = -6 * 3600
@@ -182,7 +181,7 @@ class Classifier:
             times = timess.sel(time=time).values
             input = ds.sel(time=times)
             savepath = f'{outpath_temp}input_partial_{time}.nc'
-            ftlepath = f'{outpath_temp}SL_{lcs_type}_lcstimelen_{lcs_time_len}_partial_{time}.nc'
+            ftlepath = f"{outpath_temp}SL_attracting_lcstimelen_{config['lcs_time_len']}_partial_{time}.nc"
             input.to_netcdf(savepath)
 
             # Args: timestep, timedim, SETTLS_order, subdomain, ds_path, outpath
@@ -202,37 +201,50 @@ if __name__ == '__main__':
     # end_year = str(sys.argv[3])
     # lcs_time_len = int(sys.argv[4]) # * 6 hours intervals
     # running_on = 'jasmin'
-    lcs_type = 'attracting'
+    continue_old_run = False
+    if not continue_old_run:
+        lcs_type = 'attracting'
 
-    lcs_time_len = 8
-    end_year = 2009
-    start_year = 1981
-    config = config_jasmin
-    config['start_year'] = start_year
-    config['end_year'] = end_year
-    config['lcs_time_len'] = lcs_time_len
+        lcs_time_len = 8
+        start_year = 1981
+        end_year = 2009
+        config = config_jasmin
+        config['start_year'] = start_year
+        config['end_year'] = end_year
+        config['lcs_time_len'] = lcs_time_len
 
-    config['array_slice_time']['time'] = slice(f'{start_year}-01-01T00:00:00', f'{end_year}-12-31T18:00:00')
-    config['start_time'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        config['array_slice_time']['time'] = slice(f'{start_year}-01-01T00:00:00', f'{end_year}-12-31T18:00:00')
+        config['start_time'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+        running_on = 'jasmin'
+        if running_on == 'jasmin':
+            config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
+            # outpath_temp = '/group_workspaces/jasmin4/upscale/gmpp/convzones/experiment_{}/'.format(uuid.uuid4())
+            outpath_temp = '/work/scratch-pw/gmpp/experiment_timelen_{timelen}_{id}/'.format(id=uuid.uuid4(),
+                                                                                         timelen=str(lcs_time_len), end_year=str(end_year))
 
-    running_on = 'jasmin'
-    lcs_type = 'attracting'
-    if running_on == 'jasmin':
-        config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
-        # outpath_temp = '/group_workspaces/jasmin4/upscale/gmpp/convzones/experiment_{}/'.format(uuid.uuid4())
-        outpath_temp = '/work/scratch-pw/gmpp/experiment_timelen_{timelen}_{id}/'.format(id=uuid.uuid4(),
-                                                                                     timelen=str(lcs_time_len), end_year=str(end_year))
-
+        else:
+            config['data_basepath'] = '/home/gab/phd/data/ERA5/'
+            outpath_temp = '/home/gab/phd/data/FTLE_ERA5/experiment_{}/'.format(uuid.uuid4())
+        print(outpath_temp)
+        os.mkdir(outpath_temp)
+        with open(outpath_temp + 'config.txt', 'w') as f:
+            f.write(str(config))
     else:
-        config['data_basepath'] = '/home/gab/phd/data/ERA5/'
-        outpath_temp = '/home/gab/phd/data/FTLE_ERA5/experiment_{}/'.format(uuid.uuid4())
-    print(outpath_temp)
-    os.mkdir(outpath_temp)
-    with open(outpath_temp + 'config.txt', 'w') as f:
-        f.write(str(config))
+        outpath_temp = '/work/scratch-pw/gmpp/experiment_timelen_8_486de4cd-1ab8-4ed3-afaa-0ae7dbd66ea8/'
+        with open(outpath_temp + 'config.txt') as f:
+            conf = f.read()
+            config = eval(conf)
+        list_of_files = glob.glob(outpath_temp + 'SL*')  # * means all if need specific format then *.csv
+        latest_file = max(list_of_files, key=os.path.getctime)
+        latest_date = latest_file.split('partial_')[1].split('.nc')[0]
+        #  Now need to account for offset due to propagation interval
+        dateee = pd.Timestamp(latest_date) - pd.Timedelta(str(config['lcs_time_len'] * 6) + 'H')  # 6 is the time interval
+        dateee = str(np.datetime64(dateee))
+        config['array_slice_time']['time'] = slice(dateee, f"{config['end_year']}-12-31T18:00:00")
+        print(config['array_slice_time']['time'])
 
-    classifier = Classifier(config, method='lagrangian', lcs_type=lcs_type, lcs_time_len=lcs_time_len,
+    classifier = Classifier(config, method='lagrangian', lcs_time_len=config['lcs_time_len'],
                find_departure=find_departure, parallel=parallel)
 
-    classifier.preprocess_and_save(lcs_time_len)
+    classifier.preprocess_and_save(config['lcs_time_len'])

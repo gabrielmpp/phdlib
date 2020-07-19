@@ -4,6 +4,7 @@ from LagrangianCoherence.LCS import LCS
 import matplotlib.pyplot as plt
 import numpy as np
 import cmasher as cmr
+from skimage.filters import hessian, frangi, sato
 
 # ---- Preparing input ---- #
 basepath = '/home/gab/phd/data/ERA5/'
@@ -17,19 +18,19 @@ u = u.assign_coords(longitude=(u.coords['longitude'].values + 180) % 360 - 180)
 u = u.sortby('longitude')
 u = u.sortby('latitude')
 
-u = u.sel(latitude=slice(-70, 10), longitude=slice(-110, -1))
+u = u.sel(latitude=slice(-70, 30), longitude=slice(-130, 30))
 
 v = xr.open_dataarray(v_filepath)
 v = v.assign_coords(longitude=(v.coords['longitude'].values + 180) % 360 - 180)
 v = v.sortby('longitude')
 v = v.sortby('latitude')
-v = v.sel(latitude=slice(-70, 10), longitude=slice(-110, -1))
+v = v.sel(latitude=slice(-70, 30), longitude=slice(-130, 30))
 
 tcwv = xr.open_dataarray(tcwv_filepath)
 tcwv = tcwv.assign_coords(longitude=(tcwv.coords['longitude'].values + 180) % 360 - 180)
 tcwv = tcwv.sortby('longitude')
 tcwv = tcwv.sortby('latitude')
-tcwv = tcwv.sel(latitude=slice(-70, 10), longitude=slice(-110, -1))
+tcwv = tcwv.sel(latitude=slice(-70, 30), longitude=slice(-130, 30))
 rain = -u.sel(subdomain).differentiate('longitude') - v.sel(subdomain).differentiate('latitude')
 
 u = u/tcwv
@@ -39,11 +40,11 @@ v.name = 'v'
 ds = xr.merge([u, v])
 
 # ---- Running LCS ---- #
-ntimes = 2
+ntimes = 30*4
 ftle_list = []
 
 for dt in range(ntimes):
-    timeseq = np.arange(0, 4) + dt
+    timeseq = np.arange(0, 8) + dt
     # lcs = LCS.LCS(timestep=-6 * 3600, timedim='time', SETTLS_order=4, subdomain=subdomain, return_det=True)
     # det = lcs(ds.isel(time=timeseq))
     # det = np.sqrt(det)
@@ -51,8 +52,38 @@ for dt in range(ntimes):
     # potential_rainfall = - ( 2 * tcwv / (-6*3600*5) ) * (det - 1) / (det + 1)  # [mm / s]
     # potential_rainfall = potential_rainfall * 86400  # conversion to [mm / day]
 
-    lcs = LCS.LCS(timestep=-6 * 3600, timedim='time', SETTLS_order=4, subdomain=subdomain)
+    lcs = LCS.LCS(timestep=-6 * 3600, timedim='time', SETTLS_order=2, subdomain=subdomain)
     ftle = lcs(ds.isel(time=timeseq))
+    ftle_ = ftle.isel(time=0)
+    # 14 for settls 4 and timeseq 4
+    ridges = hessian(ftle_, black_ridges=True)
+
+    ridges = ftle_.copy(data=ridges)
+    ridges = ridges.where(ftle_ > 25, 0)
+
+    fig, axs = plt.subplots(1, 2, subplot_kw={'projection': ccrs.PlateCarree()}, figsize=[16, 8])
+    p = tcwv.sel(time=ftle.time.values).interp(latitude=ftle.latitude, longitude=ftle.longitude,
+                                                method='linear').plot(ax=axs[0], cmap=cmr.gem, vmin=20, vmax=70,
+                                                                      cbar_kwargs={'shrink': 0.8},
+                                                                      transform=ccrs.PlateCarree())
+    p.set_edgecolor('face')
+    axs[0].coastlines(color='white')
+    # axs[0].set_title('FTLE')
+
+    uplot = u.sel(time=ftle.time.values[0]).interp(latitude=ftle.latitude, longitude= ftle.longitude, method='linear')
+    vplot = v.sel(time=ftle.time.values[0]).interp(latitude=ftle.latitude, longitude= ftle.longitude, method='linear')
+    mag = np.sqrt(uplot**2 + vplot**2).values
+    axs[0].streamplot(x=uplot.longitude.values, y=vplot.latitude.values, u=uplot.values,
+              v=vplot.values, color='white',transform=ccrs.PlateCarree(), linewidth=mag/6)
+    ridges.plot.contour(ax=axs[0], colors='red', transform=ccrs.PlateCarree())
+    p = ftle_.plot(ax=axs[1], cbar_kwargs={'shrink': 0.8}, vmin=0, vmax=100, cmap=cmr.rainforest,
+                   transform=ccrs.PlateCarree())
+    p.set_edgecolor('face')
+    axs[1].coastlines(color='white')
+
+    plt.savefig(f'tempfigs/local_example/{ftle.time.values[0]}.png')
+    plt.close()
+
     ftle_list.append(ftle)
     # lcs = LCS.LCS(timestep=-6 * 3600, timedim='time', SETTLS_order=4, subdomain=subdomain,
     #               return_det=False,cg_lambda=np.min)
@@ -63,20 +94,20 @@ for dt in range(ntimes):
     # potential_rainfall_MAS = - ( 2 * tcwv / (-6*3600*5) ) * (ftle - 1) / (ftle + 1)  # [mm / s]
     # potential_rainfall_MAS = potential_rainfall_MAS * 86400  # conversion to [mm / day]
 
-ftle = xr.concat(ftle_list, 'time')
-
-conv = -u.sel(subdomain).differentiate('longitude') - v.sel(subdomain).differentiate('latitude')
-conv.isel(time=timeseq).mean('time').plot(vmin=-5, vmax=5, cmap=cmr.redshift)
-plt.show()
-
-rain=xr.open_dataarray('~/Downloads/rain.nc')
-rain = rain.assign_coords(longitude=(rain.coords['longitude'].values + 180) % 360 - 180)
-rain = rain.sortby('latitude')
-rain = rain.sortby('longitude')
-rain = rain.sum('time')
-rain = rain.interp(latitude=ftle.latitude, longitude=ftle.longitude, method='linear')
-rain.name = None
-tcwv.name = None
+# ftle = xr.concat(ftle_list, 'time')
+#
+# conv = -u.sel(subdomain).differentiate('longitude') - v.sel(subdomain).differentiate('latitude')
+# conv.isel(time=timeseq).mean('time').plot(vmin=-5, vmax=5, cmap=cmr.redshift)
+# plt.show()
+#
+# rain=xr.open_dataarray('~/Downloads/rain.nc')
+# rain = rain.assign_coords(longitude=(rain.coords['longitude'].values + 180) % 360 - 180)
+# rain = rain.sortby('latitude')
+# rain = rain.sortby('longitude')
+# rain = rain.sum('time')
+# rain = rain.interp(latitude=ftle.latitude, longitude=ftle.longitude, method='linear')
+# rain.name = None
+# tcwv.name = None
 #
 # fig, axs = plt.subplots(2, 3, subplot_kw={'projection': ccrs.PlateCarree()}, )
 # ax = axs[0, 0]
@@ -124,28 +155,27 @@ tcwv.name = None
 # plt.savefig('tempfigs/local_example.pdf')
 # plt.show()
 
-from skimage.filters import hessian
 
 
-for t in range(ftle.time.values.shape[0]):
-    ftle_ = ftle.isel(time=t)
-    ftle_ = ftle_.where(ftle_ > ftle.quantile(0.8), 1)
-    ridges = hessian(ftle_, black_ridges=True)
-
-    ridges = ftle_.copy(data=ridges)
-
-    fig, ax = plt.subplots(1, 1, subplot_kw={'projection': ccrs.PlateCarree()})
-    p = tcwv.isel(time=t).interp(latitude=ftle.latitude, longitude=ftle.longitude,
-                                                method='linear').plot(ax=ax, cmap=cmr.gem)
-    p.set_edgecolor('face')
-    ax.coastlines(color='white')
-    ax.set_title('FTLE')
-
-    uplot = u.isel(time=t).interp(latitude=ftle.latitude, longitude= ftle.longitude, method='linear')
-    vplot = v.isel(time=t).interp(latitude=ftle.latitude, longitude= ftle.longitude, method='linear')
-
-    ax.streamplot(x=uplot.longitude.values, y=vplot.latitude.values, u=uplot.values,
-              v=vplot.values, color='white')
-    ridges.plot.contour(ax=ax,cmap='Reds')
-    plt.show()
-
+# for t in ftle.time.values:
+#     ftle_ = ftle.sel(time=t)
+#     ftle_ = ftle_.where(ftle_ > ftle.quantile(0.8), 1)
+#     ridges = hessian(ftle_, black_ridges=True)
+#
+#     ridges = ftle_.copy(data=ridges)
+#
+#     fig, ax = plt.subplots(1, 1, subplot_kw={'projection': ccrs.PlateCarree()}, figsize=[8,8])
+#     p = tcwv.sel(time=t).interp(latitude=ftle.latitude, longitude=ftle.longitude,
+#                                                 method='linear').plot(ax=ax, cmap=cmr.gem, vmin=20, vmax=70)
+#     p.set_edgecolor('face')
+#     ax.coastlines(color='white')
+#     ax.set_title('FTLE')
+#
+#     uplot = u.sel(time=t).interp(latitude=ftle.latitude, longitude= ftle.longitude, method='linear')
+#     vplot = v.sel(time=t).interp(latitude=ftle.latitude, longitude= ftle.longitude, method='linear')
+#
+#     ax.streamplot(x=uplot.longitude.values, y=vplot.latitude.values, u=uplot.values,
+#               v=vplot.values, color='white')
+#     ridges.plot.contour(ax=ax,cmap='Reds')
+#     plt.savefig(f'tempfigs/local_example/{t}.png')
+#     plt.close()
