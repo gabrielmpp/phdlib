@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import cmasher as cmr
 from skimage.filters import hessian, frangi, sato
-
+import pandas as pd
 # ---- Preparing input ---- #
 basepath = '/home/gab/phd/data/ERA5/'
 u_filepath = basepath + 'viwve_ERA5_6hr_2020010100-2020123118.nc'
@@ -43,6 +43,55 @@ ds = xr.merge([u, v])
 ntimes = 30*4
 ftle_list = []
 
+
+def find_ridges(da):
+    """
+    Method to compute the Hessian tensor in spherical coordinates
+    Parameters
+    ----------
+    da
+
+    Returns
+    -------
+
+    """
+    da = da.copy()
+    earth_r = 6371000
+    x = da.longitude.copy() * np.pi/180
+    y = da.latitude.copy() * np.pi/180
+    dx = x.diff('longitude') * earth_r * np.cos(y)
+    dy = y.diff('latitude') * earth_r
+
+    ddadx = da.diff('longitude') / dx
+    ddady = da.diff('latitude') / dy
+
+    d2dadx2 = ddadx / dx
+    d2dadxdy = ddadx / dy
+    d2dady2 = ddady / dx
+    d2dadydx = ddady / dx
+    # d2dadx2 = d2dadx2.stack({'points': ['latitude', 'longitude']})
+    # d2dadxdy = d2dadxdy.stack({'points': ['latitude', 'longitude']})
+    # d2dady2 = d2dady2.stack({'points': ['latitude', 'longitude']})
+    # d2dadydx = d2dadydx.stack({'points': ['latitude', 'longitude']})
+
+    hessian = xr.concat([d2dadx2, d2dadxdy, d2dadydx, d2dady2],
+                            dim=pd.Index(['d2dadx2', 'd2dadxdy', 'd2dadydx', 'd2dady2'],
+                                         name='elements'))
+    hessian = hessian.stack({'points': ['latitude', 'longitude']})
+    hessian = hessian.dropna('points', how='any')
+    vals = hessian.values
+    vals = vals.reshape([2, 2, hessian.shape[-1]])
+    import scipy
+    from skimage.feature import hessian_matrix_eigvals
+
+    norm = hessian_matrix_eigvals([hessian.sel(elements='d2dadx2').values,
+                                   hessian.sel(elements='d2dadxdy').values,
+                                   hessian.sel(elements='d2dady2').values])
+    norm_max = hessian.isel(elements=0).drop('elements').copy(data=norm[0, :]).unstack()
+
+    return norm_max
+
+
 for dt in range(ntimes):
     timeseq = np.arange(0, 8) + dt
     # lcs = LCS.LCS(timestep=-6 * 3600, timedim='time', SETTLS_order=4, subdomain=subdomain, return_det=True)
@@ -56,10 +105,13 @@ for dt in range(ntimes):
     ftle = lcs(ds.isel(time=timeseq))
     ftle_ = ftle.isel(time=0)
     # 14 for settls 4 and timeseq 4
-    ridges = hessian(ftle_, black_ridges=True)
 
-    ridges = ftle_.copy(data=ridges)
-    ridges = ridges.where(ftle_ > 25, 0)
+    ridges = find_ridges(ftle_)
+    ridges.plot()
+    plt.show()
+    ftle_ = ftle_.interp(latitude=ridges.latitude, longitude=ridges.longitude)
+    ridges = ridges.where(ridges > 2e-8)
+    ridges = ridges.where(ftle_ > 25)
 
     fig, axs = plt.subplots(1, 2, subplot_kw={'projection': ccrs.PlateCarree()}, figsize=[16, 8])
     p = tcwv.sel(time=ftle.time.values).interp(latitude=ftle.latitude, longitude=ftle.longitude,
@@ -74,8 +126,8 @@ for dt in range(ntimes):
     vplot = v.sel(time=ftle.time.values[0]).interp(latitude=ftle.latitude, longitude= ftle.longitude, method='linear')
     mag = np.sqrt(uplot**2 + vplot**2).values
     axs[0].streamplot(x=uplot.longitude.values, y=vplot.latitude.values, u=uplot.values,
-              v=vplot.values, color='white',transform=ccrs.PlateCarree(), linewidth=mag/6)
-    ridges.plot.contour(ax=axs[0], colors='red', transform=ccrs.PlateCarree())
+              v=vplot.values, color='white', transform=ccrs.PlateCarree(), linewidth=mag/6)
+    ridges.plot(ax=axs[0], colors='red', levels=[2e-8,], transform=ccrs.PlateCarree(), add_colorbar=False)
     p = ftle_.plot(ax=axs[1], cbar_kwargs={'shrink': 0.8}, vmin=0, vmax=100, cmap=cmr.rainforest,
                    transform=ccrs.PlateCarree())
     p.set_edgecolor('face')
