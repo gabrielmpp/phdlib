@@ -201,11 +201,11 @@ if __name__ == '__main__':
     # end_year = str(sys.argv[3])
     # lcs_time_len = int(sys.argv[4]) # * 6 hours intervals
     # running_on = 'jasmin'
-    continue_old_run = False
+    continue_old_run = True
     if not continue_old_run:
         lcs_type = 'attracting'
 
-        lcs_time_len = 8
+        lcs_time_len = 12
         start_year = 1981
         end_year = 2009
         config = config_jasmin
@@ -231,7 +231,7 @@ if __name__ == '__main__':
         with open(outpath_temp + 'config.txt', 'w') as f:
             f.write(str(config))
     else:
-        outpath_temp = '/work/scratch-pw/gmpp/experiment_timelen_8_486de4cd-1ab8-4ed3-afaa-0ae7dbd66ea8/'
+        outpath_temp = '/work/scratch-pw/gmpp/experiment_timelen_4_ea4f4422-7f91-4f94-9d33-dfe9d23987c7/'
         with open(outpath_temp + 'config.txt') as f:
             conf = f.read()
             config = eval(conf)

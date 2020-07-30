@@ -1,14 +1,16 @@
 import xarray as xr
 import matplotlib
 
-matplotlib.use("Agg")
+# matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import numpy as np
 import cartopy.crs as ccrs
 import bottleneck
 import pandas as pd
 import cmasher as cmr
-
+import glob
+from LagrangianCoherence.LCS.tools import find_ridges_spherical_hessian
+from xr_tools.tools import filter_ridges
 
 def covariance_gufunc(x, y):
     return ((x - x.mean(axis=-1, keepdims=True))
@@ -98,7 +100,7 @@ experiments = [
     # 'experiment_timelen_12_d8513a9b-3fd6-4df4-9b05-377a9d8e64ca/',
     # 'experiment_timelen_16_105eee10-9804-4167-b151-9821c41136f6/',
     # 'experiment_timelen_4_5cc17190-9174-4642-b70c-a6170a808eb5/',
-    'experiment_timelen_8_c102ec42-2a6f-4c98-be7d-31689c6c60a9/'
+    'experiment_timelen_8_e84311e4-2dce-43a8-9dbf-cf8c4d3bbcc9/'
 ]
 
 regions = {
@@ -117,7 +119,7 @@ regions = {
     }
 }
 
-years = slice(1981, 1989)
+years = slice(1981, 2009)
 datapath = '/gws/nopw/j04/primavera1/observations/ERA5/'
 vfilename = 'viwvn_ERA5_6hr_{year}010100-{year}123118.nc'
 ufilename = 'viwve_ERA5_6hr_{year}010100-{year}123118.nc'
@@ -144,19 +146,38 @@ cpc = cpc.assign_coords(longitude=(cpc.coords['longitude'].values + 180) % 360 -
 print('2')
 import sys
 
-basins = [str(sys.argv[1])]
-season = int(sys.argv[2])
+# basins = [str(sys.argv[1])]
+# season = int(sys.argv[2])
 experiment = experiments[0]
+
+basin = 'Tiete'
+season = 'DJF'
+def rename_ds(x):
+    x = x.to_array()
+    x.name = 'var'
+    return x
+
 
 for experiment in experiments:
 
     with open(outpath + experiment + 'config.txt') as file:
         config = eval(file.read())
     days = config['lcs_time_len'] / 4
-    da = xr.open_dataarray(outpath + experiment + '/full_array.nc', chunks={'time': 100})
-    da = da.sel(time=slice('1981', '1989'))
-    da = da.where(da > 0, 1e-6)
-    da = np.log(np.sqrt(da)) / days
+    files = [f for f in glob.glob(outpath + experiment + "**/*.nc", recursive=True)]
+    files = files[:1]
+    da = xr.open_mfdataset(files)
+    da = da['var']
+    da = da.sortby('time')
+    assert pd.Index(da.time.values).duplicated().sum() == 0, 'There are repeated time indices'
+
+    ridges = find_ridges_spherical_hessian(da, scheme='second_order')
+    ridges = ridges.where(ridges < -1e-8, 0)
+    ridges = ridges.where(ridges >= -1e-8, 1)
+    da = np.log(da) / days
+    da = da.load()
+    ridges = filter_ridges(ridges, ftle=da, criteria=['mean_intensity', 'area', 'eccentricity'],thresholds=[.6, 30, 0.9])
+    raise ValueError('Stop')
+    # ridges = ridges.where(da < , 1e-6)
     da = da.sortby('time').sel(time=slice(str(years.start), str(years.stop - 1))).resample(time='1D').mean('time')
     da.compute()
     plt.style.use('bmh')

@@ -4,8 +4,8 @@ from LagrangianCoherence.LCS import LCS
 import matplotlib.pyplot as plt
 import numpy as np
 import cmasher as cmr
-from xr_tools.tools import find_ridges_spherical_hessian
-
+from LagrangianCoherence.LCS.tools import find_ridges_spherical_hessian
+from xr_tools.tools import filter_ridges
 from skimage.filters import hessian, frangi, sato
 import pandas as pd
 # ---- Preparing input ---- #
@@ -13,26 +13,27 @@ basepath = '/home/gab/phd/data/ERA5/'
 u_filepath = basepath + 'viwve_ERA5_6hr_2020010100-2020123118.nc'
 v_filepath = basepath + 'viwvn_ERA5_6hr_2020010100-2020123118.nc'
 tcwv_filepath = basepath + 'tcwv_ERA5_6hr_2020010100-2020123118.nc'
-subdomain = {'latitude': slice(-40, -5),
-             'longitude': slice(-65, -30)}
+
+subdomain = {'latitude': slice(-40, 15),
+             'longitude': slice(-85, -32)}
 u = xr.open_dataarray(u_filepath)
 u = u.assign_coords(longitude=(u.coords['longitude'].values + 180) % 360 - 180)
 u = u.sortby('longitude')
 u = u.sortby('latitude')
 
-u = u.sel(latitude=slice(-70, 30), longitude=slice(-130, 30))
+u = u.sel(latitude=slice(-70, 35), longitude=slice(-150, 30))
 
 v = xr.open_dataarray(v_filepath)
 v = v.assign_coords(longitude=(v.coords['longitude'].values + 180) % 360 - 180)
 v = v.sortby('longitude')
 v = v.sortby('latitude')
-v = v.sel(latitude=slice(-70, 30), longitude=slice(-130, 30))
+v = v.sel(latitude=slice(-70, 35), longitude=slice(-150, 30))
 
 tcwv = xr.open_dataarray(tcwv_filepath)
 tcwv = tcwv.assign_coords(longitude=(tcwv.coords['longitude'].values + 180) % 360 - 180)
 tcwv = tcwv.sortby('longitude')
 tcwv = tcwv.sortby('latitude')
-tcwv = tcwv.sel(latitude=slice(-70, 30), longitude=slice(-130, 30))
+tcwv = tcwv.sel(latitude=slice(-70, 35), longitude=slice(-150, 30))
 rain = -u.sel(subdomain).differentiate('longitude') - v.sel(subdomain).differentiate('latitude')
 
 u = u/tcwv
@@ -45,38 +46,7 @@ ds = xr.merge([u, v])
 ntimes = 30*4
 ftle_list = []
 
-from scipy.ndimage import label, generate_binary_structure
-from skimage.measure import regionprops_table
 
-
-def filter_ridges(ridges, ftle, mean_intensity, min_area):
-    s = generate_binary_structure(2, 2)  # Full connectivity
-    ridges_labels=ridges.copy(data=label(ridges, structure=s)[0])
-    df = pd.DataFrame(regionprops_table(ridges_labels.values,
-                                        intensity_image=ftle.values,
-                      properties=['label', 'area', 'mean_intensity']))
-    df = df.set_index('label')
-
-    # Area criterion
-    da_area = df.to_xarray()['area']
-    da_area = da_area.where(da_area > min_area, drop=True)
-    criterion_1 = ridges_labels.copy()
-    for l in da_area.label.values:
-        criterion_1 = criterion_1.where(criterion_1 != l, 1)
-    criterion_1 = criterion_1.where(criterion_1 == 1, 0)
-
-    # Intensity criterion
-    da_intensity = df.to_xarray()['mean_intensity']
-    da_intensity = da_intensity.where(da_intensity > mean_intensity, drop=True)
-    criterion_2 = ridges_labels.copy()
-    for l in da_intensity.label.values:
-        criterion_2 = criterion_2.where(criterion_2 != l, 1)
-    criterion_2 = criterion_2.where(criterion_2 == 1, 0)
-
-    # Combining
-    criteria = criterion_1 * criterion_2
-    ridges_labels = criteria.where(criteria == 1)
-    return ridges_labels
 
 for dt in range(ntimes):
     timeseq = np.arange(0, 8) + dt
@@ -90,21 +60,28 @@ for dt in range(ntimes):
     lcs = LCS.LCS(timestep=-6 * 3600, timedim='time', SETTLS_order=2, subdomain=subdomain)
     ftle = lcs(ds.isel(time=timeseq))
     ftle_ = ftle.isel(time=0)
-    # 14 for settls 4 and timeseq 4
-
+    ftle_ = (4 / timeseq.shape[0]) * np.log(ftle_)
+    ftle_ = ftle_.sortby('longitude')
+    ftle_ = ftle_.sortby('latitude')
     ridges = find_ridges_spherical_hessian(ftle_, sigma=1)
-    ridges = ridges.where(ridges < -5e-9, 0)  # Warning: sensitive to sigma
-    ridges = ridges.where(ridges >= -5e-9, 1)
+    ridges = ridges.where(ridges < -2.5e-10, 0)  # Warning: sensitive to sigma
+    ridges = ridges.where(ridges >= -2.5e-10, 1)
+
     ftle_ = ftle_.interp(latitude=ridges.latitude, longitude=ridges.longitude)
-    ridges = filter_ridges(ridges, ftle_, mean_intensity=25, min_area=5)
-
-
+    ridges = filter_ridges(ridges, ftle_, criteria=['mean_intensity', 'area', 'eccentricity'],thresholds=[.6, 30, 0.9])
+    ridges = ridges.sortby('latitude')
+    ridges = ridges.sortby('longitude')
+    ftle_ = ftle_.sortby('longitude')
+    ftle_ = ftle_.sortby('latitude')
     fig, axs = plt.subplots(1, 2, subplot_kw={'projection': ccrs.PlateCarree()}, figsize=[16, 8])
-    p = tcwv.sel(time=ftle.time.values).interp(latitude=ftle.latitude, longitude=ftle.longitude,
-                                                method='linear').plot(ax=axs[0], cmap=cmr.gem, vmin=20, vmax=70,
+    p = tcwv.sel(time=ftle_.time.values).interp(latitude=ftle_.latitude, longitude=ftle_.longitude,
+                                                method='linear').plot.contourf(levels=31,
+                                                                      ax=axs[0], cmap=cmr.gem, vmin=20, vmax=70,
                                                                       cbar_kwargs={'shrink': 0.8},
                                                                       transform=ccrs.PlateCarree())
-    p.set_edgecolor('face')
+    for cl in p.collections: cl.set_edgecolor('face')
+
+    # p.set_edgecolor('face')
     axs[0].coastlines(color='white')
     # axs[0].set_title('FTLE')
 
@@ -114,9 +91,11 @@ for dt in range(ntimes):
     axs[0].streamplot(x=uplot.longitude.values, y=vplot.latitude.values, u=uplot.values,
               v=vplot.values, color='white', transform=ccrs.PlateCarree(), linewidth=mag/6)
     ridges.plot(ax=axs[0], cmap=cmr.sunburst, alpha=.6, transform=ccrs.PlateCarree(), add_colorbar=False)
-    p = ftle_.plot(ax=axs[1], cbar_kwargs={'shrink': 0.8}, vmin=0, vmax=100, cmap=cmr.rainforest,
+    p = ftle_.plot(levels=31, ax=axs[1], cbar_kwargs={'shrink': 0.8}, vmin=0.8, vmax=2.8, cmap=cmr.flamingo,
                    transform=ccrs.PlateCarree())
-    p.set_edgecolor('face')
+
+    # for cl in p.collections: cl.set_edgecolor('face')
+
     axs[1].coastlines(color='white')
 
     plt.savefig(f'tempfigs/local_example/{ftle.time.values[0]}.png')
