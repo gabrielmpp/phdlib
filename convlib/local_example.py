@@ -64,11 +64,11 @@ for dt in range(ntimes):
     ftle_ = ftle_.sortby('longitude')
     ftle_ = ftle_.sortby('latitude')
     ridges = find_ridges_spherical_hessian(ftle_, sigma=1)
-    ridges = ridges.where(ridges < -2.5e-10, 0)  # Warning: sensitive to sigma
-    ridges = ridges.where(ridges >= -2.5e-10, 1)
+    ridges = ridges.where(ridges < -2e-10, 0)  # Warning: sensitive to sigma
+    ridges = ridges.where(ridges >= -2e-10, 1)
 
     ftle_ = ftle_.interp(latitude=ridges.latitude, longitude=ridges.longitude)
-    ridges = filter_ridges(ridges, ftle_, criteria=['mean_intensity', 'area', 'eccentricity'],thresholds=[.6, 30, 0.9])
+    ridges = filter_ridges(ridges, ftle_, criteria=['mean_intensity', 'area', 'eccentricity'],thresholds=[.9, 30, 0.9])
     ridges = ridges.sortby('latitude')
     ridges = ridges.sortby('longitude')
     ftle_ = ftle_.sortby('longitude')
@@ -91,7 +91,7 @@ for dt in range(ntimes):
     axs[0].streamplot(x=uplot.longitude.values, y=vplot.latitude.values, u=uplot.values,
               v=vplot.values, color='white', transform=ccrs.PlateCarree(), linewidth=mag/6)
     ridges.plot(ax=axs[0], cmap=cmr.sunburst, alpha=.6, transform=ccrs.PlateCarree(), add_colorbar=False)
-    p = ftle_.plot(levels=31, ax=axs[1], cbar_kwargs={'shrink': 0.8}, vmin=0.8, vmax=2.8, cmap=cmr.flamingo,
+    p = ftle_.plot(levels=31, ax=axs[1], cbar_kwargs={'shrink': 0.8}, vmin=0.8, vmax=2.8, cmap=cmr.freeze,
                    transform=ccrs.PlateCarree())
 
     # for cl in p.collections: cl.set_edgecolor('face')

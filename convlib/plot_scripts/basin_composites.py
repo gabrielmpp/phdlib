@@ -146,12 +146,10 @@ cpc = cpc.assign_coords(longitude=(cpc.coords['longitude'].values + 180) % 360 -
 print('2')
 import sys
 
-# basins = [str(sys.argv[1])]
-# season = int(sys.argv[2])
+basins = [str(sys.argv[1])]
+season = int(sys.argv[2])
 experiment = experiments[0]
 
-basin = 'Tiete'
-season = 'DJF'
 def rename_ds(x):
     x = x.to_array()
     x.name = 'var'
@@ -164,7 +162,7 @@ for experiment in experiments:
         config = eval(file.read())
     days = config['lcs_time_len'] / 4
     files = [f for f in glob.glob(outpath + experiment + "**/*.nc", recursive=True)]
-    files = files[:1]
+    files = files[:8]
     da = xr.open_mfdataset(files)
     da = da['var']
     da = da.sortby('time')
@@ -175,11 +173,10 @@ for experiment in experiments:
     ridges = ridges.where(ridges >= -1e-8, 1)
     da = np.log(da) / days
     da = da.load()
-    ridges = filter_ridges(ridges, ftle=da, criteria=['mean_intensity', 'area', 'eccentricity'],thresholds=[.6, 30, 0.9])
-    raise ValueError('Stop')
-    # ridges = ridges.where(da < , 1e-6)
+    ridges = filter_ridges(ridges, ftle=da, criteria=['mean_intensity', 'area', 'eccentricity'],
+                           thresholds=[.9, 15, 0.9])
     da = da.sortby('time').sel(time=slice(str(years.start), str(years.stop - 1))).resample(time='1D').mean('time')
-    da.compute()
+    da = da.load()
     plt.style.use('bmh')
     season_mask = [(pd.Timestamp(x).month % 12 + 3) // 3 for x in da.time.values]
     da['season_mask'] = ('time'), season_mask
@@ -189,14 +186,11 @@ for experiment in experiments:
     for basin in basins:
         mask = MAG[basin].interp(latitude=da.latitude.values, longitude=da.longitude.values, method='nearest')
         da_season = da.where(da.season_mask == season, drop=True)
-        da_ts = da_season.where(mask == 1).mean(['latitude', 'longitude'])
-        threshold = 0.8
-        da_ts = da_ts.where(da_ts > threshold, 0)
-        da_ts = da_ts.where(da_ts < threshold, 1)
-        da_avg_cz = da.where(da_ts == 1, drop=True).mean('time') - \
-                    da.sel(time=da_ts.time).mean('time')
 
-        stdev_cz = da.var('time') ** 0.5
+        da_ts = (da_season*ridges).where(mask == 1).mean(['latitude', 'longitude']).dropna('time')
+        da_avg_cz = da_season.sel(time=da_ts.time).mean('time') - da_season.mean('time')
+
+        stdev_cz = da_season.var('time') ** 0.5
         t_test_cz = (da_ts.time.values.shape[0] ** 0.5) * da_avg_cz / stdev_cz
         t_test_cz = np.abs(t_test_cz)
         #
@@ -248,8 +242,8 @@ for experiment in experiments:
         cpc_['season_mask'] = ('time'), season_mask
         cpc_ = cpc_.where(cpc_.season_mask == season, drop=True).mean('time')
 
-        u_ = u.sel(time=da_ts.time)
-        v_ = v.sel(time=da_ts.time)
+        u_ = u.sel(time=da_season.time)
+        v_ = v.sel(time=da_season.time)
         # u_ = u_.load()
         # v_ = v_.load()
 
@@ -257,7 +251,7 @@ for experiment in experiments:
 
         v_ = v_.mean('time')
 
-        influx_ = influx.sel(time=da_ts.time)
+        influx_ = influx.sel(time=cpc_.time)
         influx_ = influx_.mean('time')
         # influx_ = influx_.load()
         cpc_.name = 'Rainfall anomaly (mm/day)'
@@ -287,19 +281,18 @@ for experiment in experiments:
         cpc_['season_mask'] = ('time'), season_mask
         cpc_ = cpc_.where(cpc_.season_mask == season, drop=True)
         stdev_cpc = cpc_.var('time') ** 0.5
-        cpc_ = cpc_.where(da_ts == 1, drop=True).mean('time') - cpc_.mean('time')
+        cpc_ = cpc_.sel(time=da_ts.time).mean('time') - cpc_.mean('time')
         t_test_cpc = (da_ts.time.values.shape[0] ** 0.5) * cpc_ / stdev_cpc
         t_test_cpc = np.abs(t_test_cpc)
-        u_ = u.sel(time=da_ts.time)
-        v_ = v.sel(time=da_ts.time)
+        u_ = u.sel(time=da_season.time)
+        v_ = v.sel(time=da_season.time)
         u_ = u_.load()
         v_ = v_.load()
-        u_ = u_.where(da_ts == 1, drop=True).mean('time') - u_.mean('time')
-
-        v_ = v_.where(da_ts == 1, drop=True).mean('time') - v_.mean('time')
-        influx_ = influx.sel(time=da_ts.time)
+        u_ = u_.sel(time=da_ts.time).mean('time') - u_.mean('time')
+        v_ = v_.sel(time=da_ts.time).mean('time') - v_.mean('time')
+        influx_ = influx.sel(time=da_season.time)
         stdev_influx = influx_.var('time') ** 0.5
-        influx_anomaly_czs = influx_.where(da_ts == 1, drop=True) - influx_.mean('time')
+        influx_anomaly_czs = influx_.sel(time=da_ts.time) - influx_.mean('time')
         influx_ = influx_anomaly_czs.mean('time')
         influx_ = influx_.load()
 
