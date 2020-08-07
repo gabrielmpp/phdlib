@@ -1,6 +1,7 @@
 import xarray as xr
 import matplotlib as mpl
 from LCS import LCS, parcel_propagation
+from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 
 #mpl.use('Agg')
 from convlib.xr_tools import read_nc_files, createDomains, add_basin_coord, get_xr_seq

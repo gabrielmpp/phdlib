@@ -28,8 +28,8 @@ config_jasmin = {
                     },
 
     'array_slice_latlon': {
-        'latitude': slice(-70, 35),
-        'longitude': slice(-155, 5),
+        'latitude': slice(-75, 45),
+        'longitude': slice(-170, 30),
         # 'latitude': slice(-20, -35),
         # 'longitude': slice(-55, -35)
     },
@@ -186,7 +186,7 @@ class Classifier:
 
             # Args: timestep, timedim, SETTLS_order, subdomain, ds_path, outpath
             subprocess.call(['sbatch',
-                              script_path, str(timestep), 'time', str(2),
+                              script_path, str(timestep), 'time', str(4),
                              '-85/-32/-40/15', savepath, ftlepath]
                             )
 
@@ -201,11 +201,11 @@ if __name__ == '__main__':
     # end_year = str(sys.argv[3])
     # lcs_time_len = int(sys.argv[4]) # * 6 hours intervals
     # running_on = 'jasmin'
-    continue_old_run = True
+    continue_old_run = False
     if not continue_old_run:
         lcs_type = 'attracting'
 
-        lcs_time_len = 12
+        lcs_time_len = 8
         start_year = 1981
         end_year = 2009
         config = config_jasmin
