@@ -8,7 +8,7 @@ from LagrangianCoherence.LCS.tools import find_ridges_spherical_hessian
 from xr_tools.tools import filter_ridges
 from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 from matplotlib import ticker
-
+from cartopy.io.img_tiles import Stamen
 from matplotlib.gridspec import GridSpec as GS
 import sys
 
@@ -71,7 +71,7 @@ ds = xr.merge([u, v])
 ntimes = 30*4
 ftle_list = []
 
-for dt in range(ntimes):
+for dt in range(0, ntimes, 4):
     timeseq = np.arange(0, 8) + dt
     # lcs = LCS.LCS(timestep=-6 * 3600, timedim='time', SETTLS_order=4, subdomain=subdomain, return_det=True)
     # det = lcs(ds.isel(time=timeseq))
@@ -91,12 +91,16 @@ for dt in range(ntimes):
     ftle_ = (4 / timeseq.shape[0]) * np.log(ftle_)
     ftle_ = ftle_.sortby('longitude')
     ftle_ = ftle_.sortby('latitude')
-    _, ridges = find_ridges_spherical_hessian(ftle_, sigma=1, scheme='second_order')
-    ridges = ridges.where(ridges < -9e-10, 0)  # Warning: sensitive to sigma
-    ridges = ridges.where(ridges >= -9e-10, 1)
+    ridges, _ = find_ridges_spherical_hessian(ftle_,
+                                              sigma=1,
+                                              scheme='second_order',
+                                              angle=20)
+    # ridges = ridges.where(ridges < -9e-10, 0)  # Warning: sensitive to sigma
+    # ridges = ridges.where(ridges >= -9e-10, 1)
 
     ftle_ = ftle_.interp(latitude=ridges.latitude, longitude=ridges.longitude)
-    ridges = filter_ridges(ridges, ftle_, criteria=['mean_intensity', 'area'],thresholds=[1.5, 30])
+    ridges = filter_ridges(ridges, ftle_, criteria=['mean_intensity', 'major_axis_length'],
+                           thresholds=[1.2, 30])
     ridges = ridges.sortby('latitude')
     ridges = ridges.sortby('longitude')
     ftle_ = ftle_.sortby('longitude')
@@ -150,6 +154,7 @@ for dt in range(ntimes):
     axs[0].set_title('a', loc='left')
     plt.subplots_adjust(left=0.03, right=0.97, top=0.98, bottom=0.06)
     plt.savefig(f'tempfigs/local_example/chaotic_mixing_{ftle.time.values[0]}.png')
+    plt.close()
 
     fig, axs = plt.subplots(1, 2, subplot_kw={'projection': ccrs.PlateCarree()}, figsize=[16, 8])
     p = tcwv.sel(time=ftle_.time.values).interp(latitude=ftle_.latitude, longitude=ftle_.longitude,

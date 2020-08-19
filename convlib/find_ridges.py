@@ -5,7 +5,8 @@ import glob
 import xarray as xr
 import numpy as np
 
-experiment_path = '/group_workspaces/jasmin4/upscale/gmpp/convzones/experiment_timelen_8_e84311e4-2dce-43a8-9dbf-cf8c4d3bbcc9'
+experiment_path = '/group_workspaces/jasmin4/upscale/gmpp/convzones/' \
+                  'experiment_timelen_8_db52bba2-b71a-4ab6-ae7c-09a7396211d4'
 files = [f for f in glob.glob(experiment_path + "**/*partial_0*.nc", recursive=True)]
 
 for idx, file in enumerate(files):
@@ -16,11 +17,21 @@ for idx, file in enumerate(files):
     print(file)
     da = xr.open_dataarray(file)
     da = np.log(da) / days
-    ridges = find_ridges_spherical_hessian(da, scheme='first_order', sigma=1)
-    ridges = ridges.where(ridges < -2e-10, 0)
-    ridges = ridges.where(ridges >= -2e-10, 1)
-    ridges = filter_ridges(ridges, ftle=da, criteria=['mean_intensity', 'area', 'eccentricity'],
-                           thresholds=[.6, 30, 0.9])
-    ridges = ridges.where(ridges == 1)
+    ridges_l = []
+    for time in da.time.values:
+        da_ = da.sel(time=time)
+        ridges, _ = find_ridges_spherical_hessian(da_,
+                                                  sigma=1,
+                                                  scheme='second_order',
+                                                  angle=20)
+        print(ridges)
+        print(da_)
+        da_ = da_.interp(latitude=ridges.latitude, longitude=ridges.longitude)
+
+        ridges = filter_ridges(ridges, da_, criteria=['mean_intensity', 'major_axis_length'],
+                               thresholds=[1.2, 30])
+
+        ridges_l.append(ridges)
+    ridges = xr.concat(ridges_l, dim='time')
     ridges.to_netcdf(experiment_path + '/partial_ridges_{0:03d}.nc'.format(idx))
     da.close()
