@@ -1,7 +1,7 @@
 """
 Script to calculate means and anomalies during CZ events per basin
 """
-
+from dask.diagnostics import ProgressBar
 import xarray_gab.xarray as xr
 # matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
@@ -87,7 +87,6 @@ border_amazon = border_amazon.where(border_amazon <= 1, 1)
 influx = dlat * v + dlon * u
 influx = influx.where(border_amazon)
 
-
 # ---- Reading basin masks and calculating area ---- #
 print('\n #----Reading basin masks and calculating area ----# \n')
 
@@ -99,100 +98,142 @@ mask_uruguai = mask_uruguai.sel(latitude=slice(-35, -15), longitude=slice(-65, -
 area_uruguai = mask_uruguai.sum()
 area_tiete = mask_tiete.sum()
 
-# ---- Season masks ---- #
+# ---- time sel and season ---- #
 pr = pr.sel(time=da.time)
-season_mask = [(pd.Timestamp(x).month % 12 + 3) // 3 for x in da.time.values]
-da['season_mask'] = ('time'), season_mask
-pr['season_mask'] = ('time'), season_mask
-pr_season = pr.groupby('time.season').mean('time')
-pr_season = pr_season.load()
-u_season = u.groupby('time.season').mean('time')
-v_season = v.groupby('time.season').mean('time')
-u_var_season = u.groupby('time.season').var('time')
-v_var_season = v.groupby('time.season').var('time')
-u_season = u_season.load()
-v_season = v_season.load()
-u_var_season = u_var_season.load()
-v_var_season = v_var_season.load()
-pr_var_season = pr.groupby('time.season').var('time')
-pr_var_season = pr_var_season.load()
-pr_season.to_netcdf('~/pr_season.nc')
-# pr_var_season.to_netcdf('~/pr_var_season.nc')
-pr_season = pr_season.assign_coords(season=[1, 3, 2, 4])
-pr_var_season = pr_var_season.assign_coords(season=[1, 3, 2, 4])
-# --- Writing the loop to calculate basins
-# --- Don't plot inside the loop
-
+u = u.sel(time=da.time)
+v = v.sel(time=da.time)
+z = z.sel(time=da.time)
+influx = influx.sel(time=da.time)
+#
+# pr_season = pr.groupby('time.season').mean('time')
+# u_season = u.groupby('time.season').mean('time')
+# v_season = v.groupby('time.season').mean('time')
+# z_season = z.groupby('time.season').mean('time')
+# u_var_season = u.groupby('time.season').var('time')
+# v_var_season = v.groupby('time.season').var('time')
+# z_var_season = z.groupby('time.season').var('time')
+# pr_var_season = pr.groupby('time.season').var('time')
+#
+# # ---- Loading in mem ---- #
+#
+# with ProgressBar():
+#     pr_season = pr_season.load()
+# with ProgressBar():
+#     u_season = u_season.load()
+# with ProgressBar():
+#     v_season = v_season.load()
+# with ProgressBar():
+#     z_season = z_season.load()
+# with ProgressBar():
+#     u_var_season = u_var_season.load()
+# with ProgressBar():
+#     v_var_season = v_var_season.load()
+# with ProgressBar():
+#     pr_var_season = pr_var_season.load()
+# with ProgressBar():
+#     z_var_season = z_var_season.load()
+#
+# # ---- Saving netcdfs ---- #
+#
+# pr_season.name = 'pr_season'
+# u_season.name = 'u_season'
+# v_season.name = 'v_season'
+# z_season.name = 'z_season'
+# pr_var_season.name = 'pr_var_season'
+# u_var_season.name = 'u_var_season'
+# v_var_season.name = 'v_var_season'
+# z_var_season.name = 'z_var_season'
+# arrays = [pr_season, u_season, v_season, z_season, u_var_season, v_var_season, pr_var_season,
+#           z_var_season]
+# ds = xr.merge(arrays)
+# ds.to_netcdf('~/ds_seasonal_avgs.nc')
+ds = xr.open_dataset('~/ds_seasonal_avgs.nc')
 masks = [mask_tiete, mask_uruguai]
-seasons = [1, 3]
+seasons = ['DJF', 'JJA']
+season_mask = [(pd.Timestamp(x).month % 12 + 3) // 3 for x in da.time.values]
+season_mask = pd.Index(season_mask).map({1:'DJF', 2: 'MAM', 3:'JJA', 4:'SON'})
+da['season'] = ('time'), season_mask
 
 anomalies_basins = []
 anomalies_basins_days_of_cz = []
 for season in seasons:
-    print(1)
+    print('Season: ' + str(season))
     anomalies_basins_season = []
     anomalies_basins_seasons_days_of_cz = []
 
     for mask in masks:
-        print(2)
         area = mask.sum()
         da_ = da * mask
         da_ts = da_.sum(['latitude', 'longitude'])
-        da_ts = da_ts.load()
-        da_ts = da_ts.where(da_ts.season_mask == season, drop=True)
+        with ProgressBar():
+            da_ts = da_ts.load()
+        da_ts = da_ts.where(da_ts.season == season, drop=True)
         days_of_cz = da_ts.where(da_ts/area > 0.05, drop=True)
         anomalies_basins_seasons_days_of_cz.append(days_of_cz)
+        u_cz = u.sel(time=days_of_cz.time.values)
+        v_cz = v.sel(time=days_of_cz.time.values)
+        z_cz = z.sel(time=days_of_cz.time.values)
+        z_cz_3 = z.shift(time=12).sel(time=days_of_cz.time.values)
         pr_cz = pr.sel(time=days_of_cz.time.values)
         u_cz = u.sel(time=days_of_cz.time.values)
         pr_cz = pr_cz.mean('time')
-        pr_cz = pr_cz.load()
-        anomalies_basins_season.append(pr_cz - pr_season.sel(season=season))
+        u_cz = u_cz.mean('time')
+        v_cz = v_cz.mean('time')
+        z_cz = z_cz.mean('time')
+        z_cz_3 = z_cz_3.mean('time')
+        with ProgressBar():
+            pr_cz = pr_cz.load()
+        with ProgressBar():
+            u_cz = u_cz.load()
+        with ProgressBar():
+            v_cz = v_cz.load()
+        with ProgressBar():
+            z_cz = z_cz.load()
+        with ProgressBar():
+            z_cz_3 = z_cz_3.load()
+        anom_pr = pr_cz - ds.pr_season.sel(season=season)
+        anom_u = u_cz - ds.u_season.sel(season=season)
+        anom_v = v_cz - ds.v_season.sel(season=season)
+        anom_z = z_cz - ds.z_season.sel(season=season)
+        anom_z_3 = z_cz_3 - ds.z_season.sel(season=season)
+        anom_pr.name = 'pr'
+        anom_z.name = 'z'
+        anom_z_3.name = 'z3'
+        anom_u.name = 'u'
+        anom_v.name = 'v'
+
+        ds_anomalies = xr.merge([
+            anom_pr,
+            anom_u,
+            anom_v,
+            anom_z,
+            anom_z_3
+        ])
+        anomalies_basins_season.append(ds_anomalies)
     anomalies_basins.append(anomalies_basins_season)
     anomalies_basins_days_of_cz.append(anomalies_basins_seasons_days_of_cz)
 
 
 da_list = []
 days_of_cz_list = []
+
+
 for i in range(len(anomalies_basins)):
         da_list.append(
             xr.concat(anomalies_basins[i], dim=pd.Index(basins, name='basin'))
         )
+        nlist = []
+        for dd in anomalies_basins_days_of_cz[i]:
+            nlist.append(dd.copy(data=np.ones(dd.shape)).sum('time'))
+
         days_of_cz_list.append(
-            xr.concat(anomalies_basins_days_of_cz[i], dim=pd.Index(basins, name='basin'))
+            xr.concat(nlist, dim=pd.Index(basins, name='basin'))
         )
-daa = xr.concat(da_list, dim=pd.Index(seasons, name='season'))
+
+daa = xr.concat(da_list, dim='season')
 daa_days_of_cz = xr.concat(days_of_cz_list, dim=pd.Index(seasons, name='season'))
 daa.to_netcdf('~/basin_composites.nc')
 daa_days_of_cz.to_netcdf('~/basin_composites_days_of_cz.nc')
-
-t_threshold = 2.807 * 2   # 99.5% confidence
-fig, axs = plt.subplots(2, 2, subplot_kw={'projection': ccrs.PlateCarree()})
-k=0
-l=0
-titles='abcd'
-for basin in basins:
-    for season in seasons:
-        ax = axs.flatten()[k]
-        da_to_plot = daa.sel(basin=basin, season=season)
-        t_test = (daa_days_of_cz.sel(basin=basin, season=season).shape[0] ** 0.5) * da_to_plot / pr_var_season.sel(season=season) ** 0.5
-        p = (da_to_plot*86400).plot(ax=ax, cmap=cmr.fusion, transform=ccrs.PlateCarree(), vmax=10, vmin=-10,
-                                    add_colorbar=False)
-        t_test.plot.contourf(ax=ax, hatches=['  ', '...'],cmap='gray', linewidths=.8,
-                             levels=[0, t_threshold], alpha=0,add_colorbar=False)
-        masks[l].plot.contour(levels=[0,0.5], cmap='red', ax=ax, transform=ccrs.PlateCarree(),
-                                add_colorbar=False, linewidths=.8)
-        ax.set_title(titles[k], loc='left')
-        ax.coastlines()
-        k+=1
-    l+=1
-
-cbar = fig.colorbar(p,ax=axs)
-cbar.ax.set_ylabel('Rainfall anomaly (mm/day)')
-plt.savefig('tempfigs/Anomalies_precip_basin.png', dpi=600,
-            transparent=True, bbox_inches='tight', pad_inches=0)
-
-plt.close()
-
 
 
 

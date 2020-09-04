@@ -16,12 +16,12 @@ da_tcwv = xr.open_dataarray(corr_tcwv)
 da_rain3 = xr.open_dataarray(corr_rain3)
 da_tcwv3 = xr.open_dataarray(corr_tcwv3)
 n = 4 * 90 * 30
-t_rain = da_rain*np.sqrt((n-2)/(1-da_rain**2))
-t_tcwv = da_tcwv*np.sqrt((n-2)/(1-da_tcwv**2))
-t_rain3 = da_rain3*np.sqrt((n-2)/(1-da_rain3**2))
-t_tcwv3 = da_tcwv3*np.sqrt((n-2)/(1-da_tcwv3**2))
+t_rain = np.abs(da_rain*np.sqrt((n-2)/(1-da_rain**2)))
+t_tcwv = np.abs(da_tcwv*np.sqrt((n-2)/(1-da_tcwv**2)))
+t_rain3 = np.abs(da_rain3*np.sqrt((n-2)/(1-da_rain3**2)))
+t_tcwv3 = np.abs(da_tcwv3*np.sqrt((n-2)/(1-da_tcwv3**2)))
 
-t_threshold = 2.807  # 99.5% confidence
+t_threshold = 2.807  # 99.% confidence two tailed
 
 
 fig, axs = plt.subplots(2, 2, subplot_kw={'projection': ccrs.PlateCarree()})
@@ -29,21 +29,21 @@ cmap = cmr.fusion
 
 da_rain.plot(ax=axs[0, 0], transform=ccrs.PlateCarree(), cmap=cmap, vmin=-0.3, vmax=0.3,
              add_colorbar=False)
-t_rain.plot.contourf(ax=axs[0, 0], hatches=[' ', '...'], levels=[0, t_threshold],cmap='gray',
+t_rain.plot.contourf(ax=axs[0, 0], hatches=['/////', ' '], levels=[0, t_threshold],cmap='gray',
                      alpha=0,add_colorbar=False)
 
 p=da_tcwv.plot(ax=axs[0, 1], transform=ccrs.PlateCarree(), cmap=cmap, vmin=-0.3, vmax=0.3,add_colorbar=False )
-t_tcwv.plot.contourf(ax=axs[0, 1], hatches=[' ', '...'],cmap='gray',
+t_tcwv.plot.contourf(ax=axs[0, 1], hatches=['/////', ' '],cmap='gray',
                      levels=[0, t_threshold], alpha=0,add_colorbar=False)
 da_rain3.plot(ax=axs[1, 0], transform=ccrs.PlateCarree(), cmap=cmap, vmin=-0.3, vmax=0.3,
              add_colorbar=False)
 
-t_rain3.plot.contourf(ax=axs[1, 0], hatches=[' ', '...'], levels=[0, t_threshold],cmap='gray',
+t_rain3.plot.contourf(ax=axs[1, 0], hatches=['/////', ' '], levels=[0, t_threshold],cmap='gray',
                      alpha=0,add_colorbar=False)
 
 da_tcwv3.plot(ax=axs[1, 1], transform=ccrs.PlateCarree(), cmap=cmap,
              vmin=-0.3, vmax=0.3,add_colorbar=False)
-t_tcwv3.plot.contourf(ax=axs[1, 1], hatches=[' ', '...'],cmap='gray',
+t_tcwv3.plot.contourf(ax=axs[1, 1], hatches=['/////', ' '],cmap='gray',
                      levels=[0, t_threshold], alpha=0,add_colorbar=False)
 
 cbar_ax = plt.colorbar(p, ax=axs, location='right', shrink=0.6)
@@ -70,7 +70,6 @@ gl.ylabels_right = False
 gl.xlocator = ticker.FixedLocator([-80, -60, -40])
 gl.xlines = False
 gl.ylines = False
-plt.show()
 plt.savefig('../tempfigs/correlations_rain_tcwv.png',
             transparent=True, bbox_inches='tight', pad_inches=0, dpi=600)
 plt.close()

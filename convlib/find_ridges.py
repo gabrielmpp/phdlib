@@ -5,6 +5,7 @@ import glob
 import xarray as xr
 import numpy as np
 
+
 experiment_path = '/group_workspaces/jasmin4/upscale/gmpp/convzones/' \
                   'experiment_timelen_8_db52bba2-b71a-4ab6-ae7c-09a7396211d4'
 files = [f for f in glob.glob(experiment_path + "**/*partial_0*.nc", recursive=True)]

@@ -24,16 +24,16 @@ with open(outpath + experiment + '/config.txt') as file:
 days = config['lcs_time_len'] / 4
 files_ridges = [f for f in glob.glob(outpath + experiment + "**/*ridges*.nc", recursive=True)]
 files = [f for f in glob.glob(outpath + experiment + "**/partial_0*.nc", recursive=True)]
-da = xr.open_mfdataset(files_ridges)
+da = xr.open_mfdataset(files_ridges, preprocess=lambda x: x.sortby('time'))
 da = da.to_array().isel(variable=0).drop('variable')
 
 ridges_seasons = da.groupby('time.season').sum('time')
 ridges_seasons = ridges_seasons.load()
 convert = 1/(4)  # Just to fix the season separation
 ridges_seasons = ridges_seasons / (convert*da.time.shape[0])
-
+ridges_seasons = ridges_seasons.sel(season=['DJF', 'MAM', 'JJA', 'SON'])
 cmap = cmr.freeze_r
-ridges_seasons.name = 'Frequency of MAS events (%)'
+ridges_seasons.name = 'Frequency of occurrence (%)'
 p = (100 * ridges_seasons ).plot(col='season',robust=True, vmax=5,linewidth=0,antialiased=True,
                                      col_wrap=2, add_colorbar=True, cmap=cmap,
                                          subplot_kws={'projection': ccrs.PlateCarree()})
@@ -60,7 +60,8 @@ gl.ylines = False
 #     ax.set_edgecolor('face')
 
 
-plt.savefig('tempfigs/new_frequency_season.png', dpi=600)
+plt.savefig('tempfigs/new_frequency_season.png', dpi=600,
+            transparent=True, bbox_inches='tight', pad_inches=0)
 plt.close()
 
 fig, ax = plt.subplots(1, 1, subplot_kw={'projection': ccrs.PlateCarree()})
@@ -76,6 +77,7 @@ gl.ylabels_right = False
 gl.xlocator = ticker.FixedLocator([-80, -70, -60, -50, -40])
 gl.xlines = False
 gl.ylines = False
-plt.savefig('tempfigs/new_frequency.png', dpi=600)
+plt.savefig('tempfigs/new_frequency.png', dpi=600,
+            transparent=True, bbox_inches='tight', pad_inches=0)
 plt.close()
 
