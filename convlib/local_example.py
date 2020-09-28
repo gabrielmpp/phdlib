@@ -18,6 +18,7 @@ basepath = '/home/gab/phd/data/ERA5/'
 u_filepath = basepath + 'viwve_ERA5_6hr_2020010100-2020123118.nc'
 v_filepath = basepath + 'viwvn_ERA5_6hr_2020010100-2020123118.nc'
 tcwv_filepath = basepath + 'tcwv_ERA5_6hr_2020010100-2020123118.nc'
+evap_filepath = basepath + 'evap_ERA5_6hr_2020010100-2020123118.nc'
 pr_filepath = basepath + 'pr_ERA5_6hr_2020010100-2020123118.nc'
 
 # timesel = sys.argv[1]
@@ -48,6 +49,14 @@ tcwv = tcwv.sortby('latitude')
 tcwv = tcwv.sel(latitude=slice(-88, 35), longitude=slice(-170, 30)).sel(expver=1).drop('expver')
 tcwv = tcwv.sel(time=timesel)
 tcwv = tcwv.load()
+
+evap = xr.open_dataarray(evap_filepath, chunks={'time': 140})
+evap = evap.assign_coords(longitude=(evap.coords['longitude'].values + 180) % 360 - 180)
+evap = evap.sortby('longitude')
+evap = evap.sortby('latitude')
+evap = evap.sel(latitude=slice(-88, 35), longitude=slice(-170, 30)).sel(expver=1).drop('expver')
+evap = evap.sel(time=timesel)
+evap = evap.load()
 
 pr = xr.open_dataarray(pr_filepath, chunks={'time': 140})
 pr = pr.assign_coords(longitude=(pr.coords['longitude'].values + 180) % 360 - 180)
@@ -92,9 +101,12 @@ for dt in range(0, ntimes, 4):
     ftle_ = ftle.isel(time=0)
 
     ftle_ = (4 / timeseq.shape[0]) * np.log(ftle_)
-    # ftle_ = ftle_.copy(data=gaussian_filter(ftle_, sigma=1.2))
+
     ftle_ = ftle_.sortby('longitude')
     ftle_ = ftle_.sortby('latitude')
+    # ftle_ = ftle_.copy(data=gaussian_filter(ftle_, sigma=1.2))
+
+
     ridges, _ = find_ridges_spherical_hessian(ftle_,
                                               sigma=1.2,
                                               scheme='second_order',

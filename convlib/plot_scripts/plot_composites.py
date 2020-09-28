@@ -39,19 +39,22 @@ for season in seasons:
     u = u.dropna('latitude', how='all')
     v = v.dropna('longitude', how='all')
     v = v.dropna('latitude', how='all')
+    u = u.coarsen(latitude=10, longitude=10, boundary='trim').mean()
+    v = v.coarsen(latitude=10, longitude=10, boundary='trim').mean()
     magnitude = np.sqrt(u ** 2 + v ** 2).values
     da_to_plot = ds_seasonal_avgs['pr_season'].sel(season=season)
     da_to_plot = da_to_plot.dropna('longitude', how='all')
     da_to_plot = da_to_plot.dropna('latitude', how='all')
-    p = (da_to_plot*86400/4).plot(ax=ax, cmap=cmr.arctic_r, transform=ccrs.PlateCarree(), vmax=10, vmin=0,
+    p = (da_to_plot*86400/4).plot(ax=ax, cmap=cmr.freeze_r, transform=ccrs.PlateCarree(), vmax=12, vmin=0,
                                     add_colorbar=False)
-    s = ax.streamplot(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values,
-                      color=magnitude, cmap=cmr.neutral_r, linewidth=.8,
-                      arrowsize=.5,
-                      transform=ccrs.PlateCarree())
+    s = ax.quiver(u.longitude.values, u.latitude.values, u.values, v.values,
+                      linewidth=.8, color='red',
+                      transform=ccrs.PlateCarree(), scale=4000)
+    qk = ax.quiverkey(s, 0.65, 0.75, 200, r'$200 \frac{kg}{ms}$', labelpos='E',
+                       coordinates='figure')
     ax.set_title(None)
-    s.lines.set_clim(0, 200)
-    s.arrows.set_clim(0, 200)
+    # s.lines.set_clim(0, 200)
+    # s.arrows.set_clim(0, 200)
 
     ax.set_xlim(da_to_plot.longitude.min().values, da_to_plot.longitude.max().values)
     ax.set_ylim(da_to_plot.latitude.min().values, da_to_plot.latitude.max().values)
@@ -60,8 +63,8 @@ for season in seasons:
     k+=1
     l+=1
 
-cbar = fig.colorbar(p, ax=axs, shrink=0.8)
-cbar2 = fig.colorbar(s.lines, ax=axs, shrink=0.7, orientation='horizontal')
+cbar = fig.colorbar(p, ax=axs, shrink=0.6)
+# cbar2 = fig.colorbar(s.lines, ax=axs, shrink=0.7, orientation='horizontal')
 gl = axs[0].gridlines(draw_labels=True)
 
 gl.xformatter = LONGITUDE_FORMATTER
@@ -83,47 +86,62 @@ gl.xlines = False
 gl.ylines = False
 
 cbar.ax.set_ylabel(r'Rainfall $(\frac{mm}{day})$')
-cbar2.ax.set_xlabel('VIMF' + r' $(\frac{kg}{m s})$')
+# cbar2.ax.set_xlabel('VIMF' + r' $(\frac{kg}{m s})$')
 plt.savefig('../tempfigs/avg_precip_wind.png', dpi=600,
-            transparent=True, bbox_inches='tight', pad_inches=0)
+            transparent=True, pad_inches=.2,  bbox_inches='tight'
+            )
 
 plt.close()
 
 
 # ---- Precip anomalies
 
-t_threshold = 2.807    # 99% bicaudal test
+t_threshold =  1.960    # 99% bicaudal test
 fig, axs = plt.subplots(2, 2, subplot_kw={'projection': ccrs.PlateCarree()},
                                           gridspec_kw={'hspace': 0.2, 'wspace': 0.})
+t_threshold_wind = 1.960
 k = 0
 l = 0
 titles = 'abcd'
 for basin in basins:
     for season in seasons:
+        n = daa_days_of_cz.sel(basin=basin, season=season).values
+
         ax = axs.flatten()[k]
         u = daa['u'].sel(basin=basin, season=season)
         v = daa['v'].sel(basin=basin, season=season)
+        t_test_u = (n ** 0.5) * \
+                 u / ds_seasonal_avgs['u_var_season'].sel(season=season) ** 0.5
+        t_test_v = (n ** 0.5) * \
+                 v / ds_seasonal_avgs['v_var_season'].sel(season=season) ** 0.5
+        t_test_u.where(t_test_u)
+        t_test_uv = t_test_u.where(np.abs(t_test_u) > t_threshold_wind)
+        t_test_uv = t_test_uv.where(np.abs(t_test_v) > t_threshold_wind)
+        t_test_wind = ~xr.ufuncs.isnan(t_test_uv)
+        u = u.where(t_test_wind)
+        v = v.where(t_test_wind)
         u = u.dropna('longitude', how='all')
         u = u.dropna('latitude', how='all')
         v = v.dropna('longitude', how='all')
         v = v.dropna('latitude', how='all')
+        u = u.coarsen(latitude=10, longitude=10, boundary='trim').mean()
+        v = v.coarsen(latitude=10, longitude=10, boundary='trim').mean()
 
         magnitude = np.sqrt(u ** 2 + v ** 2).values
         da_to_plot = daa['pr'].sel(basin=basin, season=season)
         da_to_plot = da_to_plot.dropna('longitude', how='all')
         da_to_plot = da_to_plot.dropna('latitude', how='all')
-        t_test = (daa_days_of_cz.sel(basin=basin, season=season).values ** 0.5) *\
+        t_test = (n ** 0.5) *\
                  da_to_plot / ds_seasonal_avgs['pr_var_season'].sel(season=season) ** 0.5
         p = (da_to_plot*86400).plot(ax=ax, cmap=cmr.fusion, transform=ccrs.PlateCarree(), vmax=12, vmin=-12,
                                     add_colorbar=False)
         np.abs(t_test).plot.contourf(ax=ax, hatches=['  ', '......'], linewidths=.8,
                              levels=[0, t_threshold], alpha=0, add_colorbar=False)
-        s = ax.streamplot(x=u.longitude.values, y=u.latitude.values, u=u.values, v=v.values,
-                      color=magnitude, cmap=cmr.neutral_r,linewidth=.5,
-                      arrowsize=.5,
-                      transform=ccrs.PlateCarree())
-        s.lines.set_clim(0, 30)
-        s.arrows.set_clim(0, 30)
+        s = ax.quiver(u.longitude.values, u.latitude.values, u.values, v.values,
+                      color='blue', edgecolor='red', headwidth=4, linewidth=.15,
+                      transform=ccrs.PlateCarree(), scale=800)
+        qk = ax.quiverkey(s, 0.65, 0.92, 50, r'$50 \frac{kg}{ms}$', labelpos='E',
+                          coordinates='figure')
 
         masks[l].plot.contour(levels=[0, 0.5], cmap='red', ax=ax, transform=ccrs.PlateCarree(),
                                 add_colorbar=False, linewidths=.6)
@@ -133,8 +151,7 @@ for basin in basins:
         k+=1
     l+=1
 
-cbar = fig.colorbar(p, ax=axs[0, :])
-cbar2 = fig.colorbar(s.lines, ax=axs[1, :])
+cbar = fig.colorbar(p, ax=axs, shrink=.8)
 gl = axs[0, 0].gridlines(draw_labels=True)
 
 gl.yformatter = LATITUDE_FORMATTER
@@ -154,9 +171,8 @@ gl.xlines = False
 gl.ylines = False
 
 cbar.ax.set_ylabel(r'Rainfall anomaly $(\frac{mm}{day})$')
-cbar2.ax.set_ylabel('VIMF anomaly' + r' $(\frac{kg}{m s})$')
 plt.savefig('../tempfigs/Anomalies_precip_basin.png', dpi=600,
-            transparent=True, bbox_inches='tight', pad_inches=0)
+            transparent=True, bbox_inches='tight', pad_inches=.2)
 
 plt.close()
 
