@@ -175,7 +175,6 @@ for season in seasons:
         z_cz = z.sel(time=days_of_cz.time.values)
         z_cz_3 = z.shift(time=12).sel(time=days_of_cz.time.values)
         pr_cz = pr.sel(time=days_of_cz.time.values)
-        u_cz = u.sel(time=days_of_cz.time.values)
         pr_cz = pr_cz.mean('time')
         u_cz = u_cz.mean('time')
         v_cz = v_cz.mean('time')

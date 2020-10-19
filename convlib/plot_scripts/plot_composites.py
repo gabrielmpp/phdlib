@@ -3,9 +3,12 @@ import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 from matplotlib import ticker
+import matplotlib
 import cmasher as cmr
 import matplotlib
 import numpy as np
+matplotlib.rcParams['hatch.color'] = 'gray'
+
 data_dir = '/home/gab/phd/data/composites_cz/'
 MAG = xr.open_dataset('~/phd/scripts/phdlib/convlib/data/xarray_mair_grid_basins.nc')
 MAG = MAG.rename({'lat': 'latitude', 'lon': 'longitude'})
@@ -222,6 +225,7 @@ for basin in basins:
                                     add_colorbar=False)
         np.abs(t_test).plot.contourf(ax=ax, hatches=[' ', '...'], cmap='white', linewidths=.8,
                              levels=[0, t_threshold], alpha=0, add_colorbar=False)
+
         masks[int(l/2)].plot.contour(levels=[0, 0.5], cmap='red', ax=ax, transform=ccrs.PlateCarree(),
                                 add_colorbar=False, linewidths=.8)
         ax.set_title(titles[t], loc='left')

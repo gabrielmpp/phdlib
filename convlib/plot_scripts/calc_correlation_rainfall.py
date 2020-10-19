@@ -1,5 +1,5 @@
 import glob
-
+import numpy as np
 import xarray as xr
 
 import pandas as pd
@@ -7,7 +7,7 @@ import pandas as pd
 
 # season = sys.argv[1]
 season = 3
-variable = 'tcwv'
+variable = 'pr'
 
 variable_dict = {'tcwv': 'tcwv',
                  'pr': 'tp'}
@@ -45,6 +45,7 @@ da = da.where(da.season_mask==season, drop=True)
 da_rain = da_rain.where(da_rain.season_mask==season, drop=True)
 
 da = da.load()
+da = np.log(da)
 da_rain = da_rain.load()
 corr = xr.corr(da, da_rain, dim='time')
 # da.to_netcdf(FTLEpath + f'Downsampled_ftle_{season}.nc')

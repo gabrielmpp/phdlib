@@ -5,45 +5,46 @@ import cmasher as cmr
 import numpy as np
 from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 from matplotlib import ticker
-dir = '/home/gab/phd/data/corrs_ftle/'
-corr_rain = dir + 'corr_rainfall.nc'
-corr_rain3 = dir + 'corr_rain_3.nc'
-corr_tcwv = dir + 'corr_tcwv.nc'
+dir = '/home/gab/phd/data/'
+corr_rain = dir + 'corr_tp_1.nc'
+corr_rain3 = dir + 'corr_tp_3.nc'
+corr_tcwv = dir + 'corr_tcwv_1.nc'
 corr_tcwv3 = dir + 'corr_tcwv_3.nc'
 
 da_rain = xr.open_dataarray(corr_rain)
 da_tcwv = xr.open_dataarray(corr_tcwv)
 da_rain3 = xr.open_dataarray(corr_rain3)
 da_tcwv3 = xr.open_dataarray(corr_tcwv3)
-n = 4 * 90 * 30
+n = .5 * 90 * 30
 t_rain = np.abs(da_rain*np.sqrt((n-2)/(1-da_rain**2)))
 t_tcwv = np.abs(da_tcwv*np.sqrt((n-2)/(1-da_tcwv**2)))
 t_rain3 = np.abs(da_rain3*np.sqrt((n-2)/(1-da_rain3**2)))
 t_tcwv3 = np.abs(da_tcwv3*np.sqrt((n-2)/(1-da_tcwv3**2)))
 
 t_threshold = 2.807  # 99.% confidence two tailed
-
+vmin=-.5
+vmax=.5
 
 fig, axs = plt.subplots(2, 2, subplot_kw={'projection': ccrs.PlateCarree()})
 cmap = cmr.fusion
 
-da_rain.plot(ax=axs[0, 0], transform=ccrs.PlateCarree(), cmap=cmap, vmin=-0.3, vmax=0.3,
+da_rain.plot(ax=axs[0, 0], transform=ccrs.PlateCarree(), cmap=cmap, vmin=vmin, vmax=vmax,
              add_colorbar=False)
-t_rain.plot.contourf(ax=axs[0, 0], hatches=['/////', ' '], levels=[0, t_threshold],cmap='gray',
-                     alpha=0,add_colorbar=False)
+t_rain.plot.contourf(ax=axs[0, 0],hatches=['....', ' '], levels=[0, t_threshold], cmap='Greys',
+                      alpha=0,add_colorbar=False)
 
-p=da_tcwv.plot(ax=axs[0, 1], transform=ccrs.PlateCarree(), cmap=cmap, vmin=-0.3, vmax=0.3,add_colorbar=False )
-t_tcwv.plot.contourf(ax=axs[0, 1], hatches=['/////', ' '],cmap='gray',
+p=da_tcwv.where(t_tcwv>t_threshold).plot(ax=axs[0, 1], transform=ccrs.PlateCarree(), cmap=cmap, vmin=vmin, vmax=vmax,add_colorbar=False )
+t_tcwv.plot.contourf(ax=axs[0, 1], hatches=['....', ' '],cmap='gray',
                      levels=[0, t_threshold], alpha=0,add_colorbar=False)
-da_rain3.plot(ax=axs[1, 0], transform=ccrs.PlateCarree(), cmap=cmap, vmin=-0.3, vmax=0.3,
+da_rain3.plot(ax=axs[1, 0], transform=ccrs.PlateCarree(), cmap=cmap, vmin=vmin, vmax=vmax,
              add_colorbar=False)
 
-t_rain3.plot.contourf(ax=axs[1, 0], hatches=['/////', ' '], levels=[0, t_threshold],cmap='gray',
+t_rain3.plot.contourf(ax=axs[1, 0], hatches=['....', ' '], levels=[0, t_threshold],cmap='gray',
                      alpha=0,add_colorbar=False)
 
 da_tcwv3.plot(ax=axs[1, 1], transform=ccrs.PlateCarree(), cmap=cmap,
-             vmin=-0.3, vmax=0.3,add_colorbar=False)
-t_tcwv3.plot.contourf(ax=axs[1, 1], hatches=['/////', ' '],cmap='gray',
+             vmin=vmin, vmax=vmax,add_colorbar=False)
+t_tcwv3.plot.contourf(ax=axs[1, 1], hatches=['....', ' '],cmap='gray',
                      levels=[0, t_threshold], alpha=0,add_colorbar=False)
 
 cbar_ax = plt.colorbar(p, ax=axs, location='right', shrink=0.6)
