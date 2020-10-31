@@ -15,8 +15,8 @@ if __name__ == '__main__':
                     # this_file_path / 'download_era_viwvn.py',
                     # this_file_path / 'download_era_viwve.py',
                     # this_file_path / 'download_era_tcwv.py',
-                    # this_file_path / 'download_era_evap.py',
-                    this_file_path / 'download_geop_orography.py',
+                    this_file_path / 'download_era_sfcpres.py',
+                    # this_file_path / 'download_integrated_temperature.py',
                     # this_file_path / 'download_solar.py',
                     # this_file_path / 'download_humid.py',
 
