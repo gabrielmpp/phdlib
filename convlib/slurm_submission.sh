@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -p short-serial
+#SBATCH -p par-single
 #SBATCH -o /home/users/gmpp/logs/%J.out
 #SBATCH -e /home/users/gmpp/logs/%J.err
 #SBATCH -t 24:00:00

@@ -206,7 +206,7 @@ if __name__ == '__main__':
     if not continue_old_run:
         lcs_type = 'attracting'
 
-        lcs_time_len = 8
+        lcs_time_len = 1
         start_year = 1981
         end_year = 2009
         config = config_jasmin
@@ -221,7 +221,7 @@ if __name__ == '__main__':
         if running_on == 'jasmin':
             config['data_basepath'] = '/gws/nopw/j04/primavera1/observations/ERA5/'
             # outpath_temp = '/group_workspaces/jasmin4/upscale/gmpp/convzones/experiment_{}/'.format(uuid.uuid4())
-            outpath_temp = '/work/scratch-pw/gmpp/experiment_timelen_{timelen}_{id}/'.format(id=uuid.uuid4(),
+            outpath_temp = '/work/scratch-nopw/gmpp/experiment_timelen_{timelen}_{id}/'.format(id=uuid.uuid4(),
                                                                                          timelen=str(lcs_time_len), end_year=str(end_year))
 
         else:
