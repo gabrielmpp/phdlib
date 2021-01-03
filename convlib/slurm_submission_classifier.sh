@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -p long-serial
-#SBATCH -o /home/users/gmpp/logs/%J.out
-#SBATCH -e /home/users/gmpp/logs/%J.err
+#SBATCH -o /home/users/gmpp/logs2/%J.out
+#SBATCH -e /home/users/gmpp/logs2/%J.err
 #SBATCH -t 160:00:00
 
 

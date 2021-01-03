@@ -184,11 +184,18 @@ class Classifier:
             savepath = f'{outpath_temp}input_partial_{time}.nc'
             ftlepath = f"{outpath_temp}SL_attracting_lcstimelen_{config['lcs_time_len']}_partial_{time}.nc"
             input.to_netcdf(savepath)
-
             # Args: timestep, timedim, SETTLS_order, subdomain, ds_path, outpath
+            os.environ['timestep'] = str(timestep)
+            os.environ['timedim'] = 'time'
+            os.environ['SETTLS_order'] = str(4)
+            os.environ['subdomain'] = '-85/-32/-40/15'
+            os.environ['savepath'] = savepath
+            os.environ['ftlepath'] = ftlepath
+
             subprocess.call(['sbatch',
-                              script_path, str(timestep), 'time', str(4),
-                             '-85/-32/-40/15', savepath, ftlepath]
+                             '--export=ALL',
+                              script_path,
+                             ]
                             )
 
 
@@ -206,7 +213,7 @@ if __name__ == '__main__':
     if not continue_old_run:
         lcs_type = 'attracting'
 
-        lcs_time_len = 1
+        lcs_time_len = 8
         start_year = 1981
         end_year = 2009
         config = config_jasmin
