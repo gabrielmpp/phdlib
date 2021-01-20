@@ -2,20 +2,18 @@ import xarray as xr
 import matplotlib as mpl
 
 mpl.use('Agg')
-from convlib.xr_tools import read_nc_files, createDomains
+from xr_tools.tools import read_nc_files, createDomains
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import meteomath
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.gridspec as gridspec
-from convlib.xr_tools import xy_to_latlon
+from xr_tools.tools import xy_to_latlon
 import cartopy.feature as cfeature
-from xrtools import xrumap as xru
 import pandas as pd
 from numba import jit
 import numba
-import convlib.xr_tools as xrtools
 
 def precip_fraction(region, years):
     if region == 'AITCZ':
